@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Midi Visualizer (MVC, p5.js 2.0.5+)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- p5.js 2.0.5+ (global mode) -->
+    <script src="https://cdn.jsdelivr.net/npm/p5@2.0.5/lib/p5.min.js"></script>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+        color: #fff;
+        height: 100%;
+        overflow: hidden;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      }
+      #app-loader {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: #bbb;
+        font-size: 14px;
+        letter-spacing: .02em;
+      }
+      a { color: #8bb8ff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      
+      /* Prevent context menu on canvas */
+      main, canvas {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        -khtml-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+      }
+    </style>
+    
+    <script>
+      // Prevent context menu globally
+      document.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        return false;
+      });
+      
+      // Debug right-click detection
+      document.addEventListener('mousedown', function(e) {
+        console.log('Mouse button pressed:', e.button, 'Right click:', e.button === 2);
+      });
+    </script>
+  </head>
+  <body>
+    <!-- App entry (ES modules). Our modules will refer to p5 via window.p5 / window.createCanvas etc. -->
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
