@@ -110,6 +110,10 @@ window.keyPressed = () => {
   app.keyPressed();
 };
 
+window.keyReleased = () => {
+  app.keyReleased();
+};
+
 // Prevent context menu globally
 window.addEventListener('contextmenu', (e) => {
   e.preventDefault();

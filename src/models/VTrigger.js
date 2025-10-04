@@ -225,8 +225,26 @@ export default class VTrigger {
    * Trigger the input port (start playback from this position)
    */
   triggerInputPort() {
+    // Check if node is in a group
+    const app = this._getAppInstance();
+    if (app && app.groupManager && app.groupManager.isNodeGrouped(this.node)) {
+      // Start group playback from this trigger's position
+      const group = app.groupManager.findGroupContaining(this.node);
+      if (group) {
+        // Calculate global X position of this trigger
+        const triggerX = this.x; // Already calculated via getter
+        
+        // Start group playback from this X position
+        app.groupManager.startGroupPlaybackFromX(group, triggerX);
+        
+        console.log(`VTrigger input triggered - starting GROUP playback from u=${this.u.toFixed(3)}, X=${triggerX.toFixed(1)}`);
+        return;
+      }
+    }
+    
+    // Standalone node - use existing behavior
     this.triggerPlayback();
-    console.log(`VTrigger input port triggered - starting playback from u=${this.u.toFixed(3)}`);
+    console.log(`VTrigger input triggered - starting STANDALONE playback from u=${this.u.toFixed(3)}`);
   }
 
   /**

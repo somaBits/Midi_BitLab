@@ -62,6 +62,15 @@ export const SNAP_PX = 8;
 export const SNAP_NEAR_PX = 20;
 export const GUIDE_ALPHA = 190;
 
+// Group Visual Constants
+export const GROUP_BORDER_COLOR = [80, 160, 255, 180]; // Light blue, semi-transparent (preview)
+export const GROUP_OUTLINE_COLOR = [255, 255, 255, 200]; // White, semi-transparent (permanent)
+export const GROUP_PLAYHEAD_COLOR = [80, 160, 255, 230]; // Brighter blue for playhead
+export const GROUP_BORDER_OFFSET = 5; // Pixels from node edge
+export const GROUP_BORDER_DASH = [5, 5]; // Dash pattern: [dash length, gap length]
+export const GROUP_PLAYHEAD_WEIGHT = 2; // Stroke weight for group playhead
+export const UNGROUP_DISTANCE = 30; // Pixels - auto-ungroup during Shift+drag when node moves this far from group
+
 // UI Styling
 export const FONT_FAMILY = 'sans-serif';
 

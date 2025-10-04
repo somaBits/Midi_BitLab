@@ -5,7 +5,7 @@
  */
 
 import { pointInRect, computeDockSnap, dist2 } from '../utils/geometry.js';
-import { CLICK_DRAG_THRESHOLD, SNAP_PX, SNAP_NEAR_PX, DELETE_ICON_R } from '../config/constants.js';
+import { CLICK_DRAG_THRESHOLD, SNAP_PX, SNAP_NEAR_PX, DELETE_ICON_R, UNGROUP_DISTANCE } from '../config/constants.js';
 
 export default class InteractionController {
   constructor(app) {
@@ -304,20 +304,54 @@ export default class InteractionController {
    * @private
    */
   _startNodeDrag(node, mouseX, mouseY) {
+    // Check if node is part of a group AND Shift is NOT held
+    let groupMembers = [];
+    let isGroupDrag = false;
+    
+    if (!this.shiftPressed && // Only group drag if Shift NOT held
+        this.app.groupManager && 
+        this.app.groupManager.isNodeGrouped(node)) {
+      groupMembers = this.app.groupManager.getGroupMembers(node);
+      isGroupDrag = true;
+      console.log(`🔵 GROUP DRAG: Moving ${groupMembers.length} nodes together`);
+    } else if (this.shiftPressed && this.app.groupManager?.isNodeGrouped(node)) {
+      console.log(`🔵 INDIVIDUAL DRAG: Shift held - dragging "${node.label}" individually (still grouped)`);
+    }
+    
     this.dragState = {
       active: true,
       node: node,
       startX: mouseX,
       startY: mouseY,
       offsetX: mouseX - node.x,
-      offsetY: mouseY - node.y
+      offsetY: mouseY - node.y,
+      isGroupDrag: isGroupDrag,      // Flag for group movement mode
+      groupMembers: groupMembers,     // Store group members
+      groupOffsets: [],               // Store relative offsets
+      snapTarget: null,               // Node we're snapping to (for grouping)
+      showGroupPreview: false         // Show blue preview outline during Shift+drag
     };
+    
+    // Calculate relative offsets for all group members
+    if (isGroupDrag && groupMembers.length > 1) {
+      this.dragState.groupOffsets = groupMembers.map(member => ({
+        node: member,
+        offsetX: member.x - node.x,  // Relative to dragged node
+        offsetY: member.y - node.y
+      }));
+      
+      // Set dragging state for all group members
+      for (const member of groupMembers) {
+        member.setDragging(true);
+      }
+    } else {
+      // Individual drag - only set dragging on the one node
+      node.setDragging(true);
+    }
     
     // Bring node to front
     this._bringNodeToFront(node);
     
-    // Update node states
-    node.setDragging(true);
     this._updateNodeStates();
     
     console.log(`Started dragging node: ${node.label}`);
@@ -347,9 +381,81 @@ export default class InteractionController {
     // Update node position
     node.setPosition(snapResult.x, snapResult.y);
 
+    // Move all group members if this is a group drag
+    if (this.dragState.isGroupDrag && this.dragState.groupMembers.length > 1) {
+      for (const offset of this.dragState.groupOffsets) {
+        if (offset.node !== node) {  // Don't move the dragged node twice
+          offset.node.setPosition(
+            snapResult.x + offset.offsetX,
+            snapResult.y + offset.offsetY
+          );
+        }
+      }
+    }
+
+    // Check for auto-ungrouping during Shift+drag (individual drag of grouped node)
+    if (!this.dragState.isGroupDrag && 
+        this.shiftPressed && 
+        this.app.groupManager && 
+        this.app.groupManager.isNodeGrouped(node)) {
+      // Calculate distance to nearest group member
+      const groupMembers = this.app.groupManager.getGroupMembers(node);
+      let minDistance = Infinity;
+      
+      for (const member of groupMembers) {
+        if (member === node) continue; // Skip self
+        
+        // Calculate center-to-center distance
+        const dx = (node.x + node.w / 2) - (member.x + member.w / 2);
+        const dy = (node.y + node.h / 2) - (member.y + member.h / 2);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < minDistance) {
+          minDistance = distance;
+        }
+      }
+      
+      // Auto-ungroup if distance exceeds threshold
+      if (minDistance > UNGROUP_DISTANCE) {
+        console.log(`\n🔵 AUTO-UNGROUP: "${node.label}" moved ${Math.round(minDistance)}px from group (threshold: ${UNGROUP_DISTANCE}px)`);
+        this.app.groupManager.ungroupNode(node);
+        console.log(`  → Node is now standalone\n`);
+      }
+    }
+
     // Update visual guides
     this.guideV = snapResult.guideV;
     this.guideH = snapResult.guideH;
+
+    // Shift+drag grouping preview - ONLY if NOT in group drag mode
+    const wasShowingPreview = this.dragState.showGroupPreview;
+    
+    if (!this.dragState.isGroupDrag && // Disable grouping if already group dragging
+        this.shiftPressed && 
+        snapResult.snappedTo) {
+      // Individual drag with Shift snap detected
+      this.dragState.snapTarget = snapResult.snappedTo;
+      this.dragState.showGroupPreview = true;
+      
+      // Log when preview STARTS (only once)
+      if (!wasShowingPreview) {
+        console.log(`🔵 GROUPING PREVIEW: "${node.label}" ↔ "${snapResult.snappedTo.label}"`);
+        console.log(`  → Blue fencing outline should appear around both nodes`);
+      }
+    } else {
+      // Either Shift not held OR not snapping OR in group drag mode
+      this.dragState.snapTarget = null;
+      this.dragState.showGroupPreview = false;
+      
+      // Log when preview ENDS (only if it was active)
+      if (wasShowingPreview) {
+        if (!this.shiftPressed) {
+          console.log(`🔵 GROUPING PREVIEW ENDED: Shift key released`);
+        } else {
+          console.log(`🔵 GROUPING PREVIEW ENDED: Nodes no longer snapping`);
+        }
+      }
+    }
 
     // Update deletion icon position if this node is being deleted
     this._updateDeletionIconPosition();
@@ -372,21 +478,103 @@ export default class InteractionController {
 
     if (!moved) {
       // This was a click, not a drag - start playback
-      node.startPlayback();
-      console.log(`Started playback: ${node.label}`);
+      // Check if node is part of a group
+      if (this.app.groupManager && this.app.groupManager.isNodeGrouped(node)) {
+        const group = this.app.groupManager.findGroupContaining(node);
+        if (group) {
+          // Start synchronized group playback
+          console.log(`\n🔵 GROUP PLAYBACK: Clicked grouped node "${node.label}"`);
+          const groupMembers = this.app.groupManager.getGroupMembers(node);
+          const memberLabels = groupMembers.map(n => n.label).join(', ');
+          console.log(`  Starting synchronized playback for group: [${memberLabels}]`);
+          
+          // Start playback for all nodes in the group
+          for (const groupNode of group.members) {
+            groupNode.startPlayback();
+          }
+          
+          // Start group playback tracking in GroupManager
+          this.app.groupManager.startGroupPlayback(group);
+          
+          console.log(`  → Blue group playhead will sweep across all ${group.members.size} nodes\n`);
+        }
+      } else {
+        // Standalone node playback
+        node.startPlayback();
+        console.log(`Started playback: ${node.label}`);
+      }
     } else {
-      console.log(`Finished dragging node: ${node.label} to (${Math.round(node.x)}, ${Math.round(node.y)})`);
+      // Enhanced logging for group drags
+      if (this.dragState.isGroupDrag) {
+        console.log(`🔵 GROUP DRAG COMPLETE: Moved ${this.dragState.groupMembers.length} nodes together to (${Math.round(node.x)}, ${Math.round(node.y)})`);
+      } else {
+        console.log(`Finished dragging node: ${node.label} to (${Math.round(node.x)}, ${Math.round(node.y)})`);
+      }
+      
+      // Shift+drag group formation logic - only if NOT group drag
+      if (!this.dragState.isGroupDrag && 
+          this.dragState.snapTarget && 
+          this.app.groupManager) {
+        const targetNode = this.dragState.snapTarget;
+        
+        console.log(`\n🔵 GROUPING: Shift+drag released with snap detected`);
+        console.log(`  Source node: "${node.label}"`);
+        console.log(`  Target node: "${targetNode.label}"`);
+        
+        // Check if nodes are already in groups (for merge detection)
+        const sourceIsGrouped = this.app.groupManager.isNodeGrouped(node);
+        const targetIsGrouped = this.app.groupManager.isNodeGrouped(targetNode);
+        
+        if (!sourceIsGrouped && !targetIsGrouped) {
+          console.log(`  Action: Creating NEW group`);
+        } else if (sourceIsGrouped && !targetIsGrouped) {
+          console.log(`  Action: Adding "${targetNode.label}" to existing group`);
+        } else if (!sourceIsGrouped && targetIsGrouped) {
+          console.log(`  Action: Adding "${node.label}" to existing group`);
+        } else {
+          console.log(`  Action: MERGING two existing groups`);
+        }
+        
+        // Perform the grouping
+        this.app.groupManager.ensureGroupWith(node, targetNode);
+        
+        // Report final group membership
+        const members = this.app.groupManager.getGroupMembers(node);
+        if (members) {
+          const memberLabels = members.map(n => n.label).join(', ');
+          console.log(`  Result: Group now contains [${memberLabels}]`);
+          console.log(`  → White fencing outline should appear\n`);
+        }
+        
+      } else if (!this.dragState.isGroupDrag && (this.dragState.showGroupPreview || this.shiftPressed)) {
+        // Shift was held but no snap on release
+        console.log(`\n🔵 GROUPING: Shift+drag released WITHOUT snap`);
+        console.log(`  → No grouping performed\n`);
+      }
+    }
+
+    // Clear dragging state for all group members
+    if (this.dragState.isGroupDrag && this.dragState.groupMembers) {
+      for (const member of this.dragState.groupMembers) {
+        member.setDragging(false);
+      }
+    } else {
+      node.setDragging(false);
     }
 
     // End drag state
-    node.setDragging(false);
     this.dragState = {
       active: false,
       node: null,
       startX: 0,
       startY: 0,
       offsetX: 0,
-      offsetY: 0
+      offsetY: 0,
+      isGroupDrag: false,      // Clear group drag flag
+      groupMembers: [],        // Clear group members
+      groupOffsets: [],        // Clear offsets
+      snapTarget: null,
+      showGroupPreview: false
     };
 
     // Clear guides

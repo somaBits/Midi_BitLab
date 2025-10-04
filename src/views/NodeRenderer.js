@@ -133,6 +133,16 @@ export default class NodeRenderer {
    * @private
    */
   _drawPlayhead(nodeData) {
+    // Hide individual red playhead if node is in an active group
+    // Group playback uses the blue group playhead instead
+    if (window.app && window.app.groupManager) {
+      const activeGroup = window.app.groupManager.getActiveGroupFor(nodeData);
+      if (activeGroup) {
+        // Don't draw individual playhead during group playback
+        return;
+      }
+    }
+    
     const { gx, gy, gw, gh } = nodeData.getGraphRect();
     const playheadX = gx + gw * nodeData.playProgress;
     

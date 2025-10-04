@@ -825,6 +825,546 @@ const rightWidth = Math.max(2, this.w - leftWidth);
 - Group playback coordination
 - Advanced UI enhancements and polish
 
+### 2025-10-04 22:04:00 (Europe/Stockholm) - Group Playback Refinements COMPLETED
+
+#### 🎨 FEATURE: Enhanced Group Playback Visualization & Behavior
+
+**Feature Overview:** Implemented visual improvements for group playback to better distinguish between individual and synchronized playback modes.
+
+#### Implementation Components
+
+**1. Hide Individual Red Playheads During Group Playback (NodeRenderer.js):**
+- Modified `_drawPlayhead()` method to check for active group membership
+- **Logic:** If node is in an active group, skip individual playhead rendering
+- **Result:** Only blue group playhead visible during synchronized playback
+- **Code:**
+```javascript
+if (window.app && window.app.groupManager) {
+  const activeGroup = window.app.groupManager.getActiveGroupFor(nodeData);
+  if (activeGroup) {
+    return; // Don't draw individual playhead during group playback
+  }
+}
+```
+
+**2. Delay CC Output Until Blue Playhead Enters Node (WaveformNode.js):**
+- Modified `sendCurrentCC()` method to check playhead position during group playback
+- **Logic:** Calculate blue playhead X position, only send CC when inside node bounds
+- **Result:** Sequential CC output as playhead moves through grouped nodes
+- **Code:**
+```javascript
+const activeGroup = this._getActiveGroup();
+if (activeGroup) {
+  const groupBounds = window.app.groupManager.computeGroupGraphBounds(activeGroup);
+  const progress = window.app.groupManager.getGroupProgress(activeGroup);
+  const playheadX = startX + (bounds.maxGX - startX) * progress;
+  
+  const graphRect = this.getGraphRect();
+  if (playheadX < graphRect.gx || playheadX > graphRect.gx + graphRect.gw) {
+    return; // Playhead not in this node yet
+  }
+}
+```
+
+#### Expected Behavior
+
+**Group Playback:**
+- ✅ Single blue playhead sweeps across all grouped nodes
+- ✅ No individual red playheads shown
+- ✅ Each node outputs CC only when blue playhead is inside its bounds
+- ✅ Sequential CC output from left to right
+
+**Standalone Playback (Unaffected):**
+- ✅ Red playhead visible as normal
+- ✅ CC output throughout entire playback
+- ✅ Original behavior preserved
+
+#### Files Modified
+- `src/views/NodeRenderer.js` - Enhanced `_drawPlayhead()` with group detection
+- `src/models/WaveformNode.js` - Enhanced `sendCurrentCC()` with position checking
+
+#### Impact on Project Status
+- **Group Playback:** Now visually distinct from individual playback
+- **User Experience:** Clear feedback for synchronized vs. standalone modes
+- **Architecture:** Clean integration using existing `_getActiveGroup()` helper
+
+### 2025-10-04 22:24:00 (Europe/Stockholm) - VTrigger-Initiated Group Playback COMPLETED
+
+#### 🎯 MAJOR FEATURE: Trigger-Based Group Playback Starting Position
+
+**Feature Overview:** VTrigger input ports can now start group playback from their position rather than from the beginning, enabling sophisticated trigger-based sequencing within grouped nodes.
+
+#### Implementation Components
+
+**1. VTrigger.triggerInputPort() Enhancement (VTrigger.js):**
+- Detects if node is in a group before starting playback
+- **Grouped:** Calls `GroupManager.startGroupPlaybackFromX()` with trigger's X position
+- **Standalone:** Uses existing `triggerPlayback()` behavior
+- **Result:** Group playback starts from trigger position, not beginning
+
+**2. GroupManager.startGroupPlaybackFromX() Method (GroupManager.js):**
+- New method accepting global X coordinate (e.g., trigger position)
+- Clamps X to group bounds (minGX to maxGX)
+- Calculates duration from startX to end of group
+- Starts all member nodes playing
+- **Result:** Flexible playback starting point based on spatial position
+
+**3. GroupManager.startGroupPlayback() Refactor:**
+- Now uses `startGroupPlaybackFromX()` internally
+- Converts normalized U (0-1) to X coordinate
+- Maintains backward compatibility
+
+#### User Requirements Implemented
+
+**Clarified Requirements:**
+1. ✅ **All nodes play** - CC only outputs when blue playhead enters each node
+2. ✅ **Most recent trigger** - If multiple VTriggers fire, latest one wins
+3. ✅ **VTriggers only** - HTriggers have no input ports (they only react to waveform crossings)
+
+#### Technical Implementation
+
+**Trigger Position Calculation:**
+```javascript
+// VTrigger detects group and calculates global X
+const triggerX = this.x; // Global X position
+app.groupManager.startGroupPlaybackFromX(group, triggerX);
+```
+
+**Group Playback from X:**
+```javascript
+startGroupPlaybackFromX(group, startX) {
+  const bounds = this.computeGroupGraphBounds(group);
+  const clampedStartX = Math.max(bounds.minGX, Math.min(startX, bounds.maxGX));
+  const distance = bounds.maxGX - clampedStartX;
+  const durationMs = (distance / 100) * 1000; // 100 px/sec
+  
+  group.startX = clampedStartX; // Start from trigger position
+  group.durationMs = durationMs;
+  // Start all nodes...
+}
+```
+
+#### Verification Results
+
+**Console Log Evidence:**
+- ✅ "VTrigger input triggered - starting GROUP playback from u=0.500, X=450.0"
+- ✅ "GroupManager: Started group playback from X=450.0 (3 nodes, 2500ms duration)"
+
+**Expected Behavior:**
+1. Create 3 nodes and group them (Shift+drag snap)
+2. Add VTrigger to middle node
+3. Connect another node's output to VTrigger input
+4. Trigger fires → Blue playhead starts at middle node
+5. Playhead sweeps from trigger position to rightmost node
+
+#### Files Modified
+- `src/models/VTrigger.js` - Enhanced `triggerInputPort()` with group detection
+- `src/models/GroupManager.js` - Added `startGroupPlaybackFromX()` method
+- `src/models/GroupManager.js` - Refactored `startGroupPlayback()` to use new method
+
+#### Impact on Project Status
+- **Trigger System:** Enhanced with spatial playback control
+- **Group Playback:** Now supports trigger-initiated starting positions
+- **Architecture:** Clean MVC integration with backward compatibility
+
+### 2025-10-04 23:09:00 (Europe/Stockholm) - Spacebar Group Playhead Fix COMPLETED
+
+#### 🔧 BUG FIX: Blue Group Playhead Persistence After Spacebar
+
+**Problem:** When spacebar stopped playback, individual nodes stopped but blue group playhead continued rendering.
+
+**Root Cause:** `stopAllPlayback()` only stopped individual nodes, didn't clear group playback state (`group.playStart` remained set).
+
+#### Solution Implemented
+
+**Modified AppController.stopAllPlayback() (AppController.js):**
+```javascript
+stopAllPlayback() {
+  // Stop individual nodes
+  for (const node of this.nodes) {
+    if (node.playing) {
+      node.stopPlayback();
+      stoppedCount++;
+    }
+  }
+  
+  // Stop all active groups to clear blue playhead
+  if (this.groupManager) {
+    const activeGroups = this.groupManager.getActiveGroups();
+    for (const group of activeGroups) {
+      this.groupManager.stopGroupPlayback(group);
+    }
+    if (activeGroups.length > 0) {
+      console.log(`Stopped ${activeGroups.length} active group(s)`);
+    }
+  }
+}
+```
+
+#### Verification
+
+**Before:**
+1. Spacebar pressed → nodes stop ✓
+2. Group `playStart` remains set → blue playhead continues ❌
+
+**After:**
+1. Spacebar pressed → nodes stop ✓
+2. `stopGroupPlayback()` clears `playStart` → blue playhead disappears ✓
+
+**Console Output:**
+```
+SPACEBAR pressed - stopping all playback
+Stopped 3 playing node(s)
+Stopped 1 active group(s)
+```
+
+#### Files Modified
+- `src/controllers/AppController.js` - Enhanced `stopAllPlayback()` with group stopping
+
+#### Impact on Project Status
+- **Spacebar Functionality:** Now stops both nodes and group playback completely
+- **Visual Consistency:** Blue playhead disappears as expected
+- **User Experience:** Matches expected behavior for stop-all operation
+
+---
+
+## Current Implementation Status (October 4, 2025)
+
+**Total Implementation: 15/21 Planned Components = 71% Complete**
+
+**Phase Status:**
+- ✅ **Phase 1**: Foundation (Nodes, MIDI, Canvas) - COMPLETE
+- ✅ **Phase 2**: Recording System - COMPLETE  
+- ✅ **Phase 3**: Trigger System - COMPLETE
+- ✅ **Phase 4**: Connection System - COMPLETE
+- ⚠️ **Phase 5**: Advanced Features - IN PROGRESS
+
+**Recent Achievements:**
+- ✅ Group playback visual refinements (hide red playheads, delayed CC)
+- ✅ VTrigger-initiated group playback with starting position control
+- ✅ Spacebar group playback stopping fix
+
+**Next Priorities:**
+- Multi-selection system for nodes and connections
+- Advanced UI enhancements and polish
+- Performance optimization for complex scenes
+
+### 2025-10-04 21:26:00 (Europe/Stockholm) - Group Border Dashed Pattern & Dynamic Shift Key COMPLETED
+
+#### 🎨 FEATURE: Configurable Dashed Group Borders with Dynamic Shift Detection
+
+**Feature Overview:** Completed two major grouping system enhancements: (1) configurable dashed border patterns for visual group indicators, and (2) real-time Shift key detection during drag operations for dynamic grouping mode entry/exit.
+
+#### Implementation Components
+
+**1. Dashed Border Constants (constants.js):**
+```javascript
+export const GROUP_BORDER_DASH = [5, 5]; // Dash pattern: [dash length, gap length]
+export const GROUP_BORDER_OFFSET = 1;     // 1px gap from node edges
+```
+
+**2. P5.js setLineDash Integration (AppController.js):**
+- **Blue Preview Outline (`_renderGroupPreview`):**
+  - Added `this.canvas.drawingContext.setLineDash(GROUP_BORDER_DASH)`
+  - Draws dashed blue outline during Shift+drag snap preview
+  - Resets line dash: `setLineDash([])` after rendering
+
+- **White Permanent Outline (`_renderGroupOutlines`):**
+  - Added `this.canvas.drawingContext.setLineDash(GROUP_BORDER_DASH)`
+  - Draws dashed white outline around formed groups
+  - Resets line dash: `setLineDash([])` after rendering
+
+**3. Dynamic Shift Key Detection:**
+- **AppController Keyboard Handlers:**
+  - `keyPressed()`: Detects Shift (keyCode 16) during active drag → enters grouping mode
+  - `keyReleased()`: Detects Shift release during drag → exits grouping mode
+  - Updates `this.interaction.shiftPressed` in real-time
+
+- **P5.js Integration (main.js):**
+  - Added `window.keyReleased = () => app.keyReleased()`
+  - Completes event chain for dynamic Shift state
+
+#### Visual Results
+
+**Dashed Border Appearance:**
+- **Preview (Blue):** Semi-transparent dashed outline during Shift+drag
+- **Permanent (White):** Semi-transparent dashed outline for formed groups
+- **Pattern:** 5px dash, 5px gap (configurable via constant)
+- **Offset:** 1px gap from node edges (configurable via constant)
+
+**Dynamic Shift Behavior:**
+- Press Shift mid-drag → blue preview appears immediately
+- Release Shift mid-drag → blue preview disappears immediately  
+- Grouping decision based on Shift state at mouse release
+
+#### Technical Implementation
+
+**setLineDash Pattern:**
+```javascript
+// Before drawing
+this.canvas.drawingContext.setLineDash(GROUP_BORDER_DASH); // [5, 5]
+
+// Draw dashed rectangle
+this.canvas.rect(x, y, w, h);
+
+// After drawing - CRITICAL cleanup
+this.canvas.drawingContext.setLineDash([]); // Reset to solid lines
+```
+
+**Shift Key Event Flow:**
+```javascript
+// During drag:
+1. User presses Shift → P5.js keyPressed event
+2. AppController.keyPressed() detects keyCode 16
+3. Updates this.interaction.shiftPressed = true
+4. Next frame: _handleNodeDrag() sees Shift state
+5. Shows blue preview if snapping
+
+// Release Shift:
+1. User releases Shift → P5.js keyReleased event  
+2. AppController.keyReleased() detects keyCode 16
+3. Updates this.interaction.shiftPressed = false
+4. Next frame: Blue preview disappears
+```
+
+#### Architecture Benefits
+
+**Complete Configurability:**
+- All visual parameters centralized in constants
+- Single source of truth for dash pattern, offset, colors
+- Easy customization without touching rendering code
+
+**MVC Compliance:**
+- Models: No changes (pure data)
+- Views: CanvasManager provides drawingContext access
+- Controllers: AppController coordinates rendering with proper cleanup
+
+**Code Quality:**
+- Proper setLineDash cleanup prevents line dash state leakage
+- Event-driven Shift detection (no polling required)
+- Clean integration with existing grouping system
+
+#### Files Modified
+- `src/config/constants.js` - Added GROUP_BORDER_DASH constant
+- `src/controllers/AppController.js` - Dashed rendering + Shift handlers + keyReleased method
+- `src/main.js` - Added keyReleased event wiring
+
+#### Console Log Evidence
+- ✅ "🔵 GROUPING: Shift pressed during drag - entering grouping mode"
+- ✅ "🔵 GROUPING: Shift released during drag - exiting grouping mode"
+- ✅ No line dash state leakage confirmed
+
+#### User Experience Improvements
+
+**Visual Polish:**
+- Dashed borders provide subtle, professional appearance
+- Clear distinction between preview (blue) and permanent (white)
+- Consistent with design patterns in professional audio software
+
+**Interaction Flexibility:**
+- Can enter grouping mode at any point during drag
+- Can exit grouping mode without completing group formation
+- Immediate visual feedback for Shift state changes
+
+#### Impact on Project Status
+- **Overall Completion:** Maintains 71% with enhanced grouping UX
+- **Grouping System:** Step 3A (Dynamic Shift) and Step 5A (Dashed Borders) complete
+- **Architecture Quality:** Clean P5.js integration with proper state management
+- **Visual Consistency:** All group visual parameters now configurable
+
+#### Next Priorities
+- Step 3B: Group Movement System (drag grouped nodes together)
+- Step 4: WaveformNode Enhancement (synchronized playback)
+- Step 6: Testing & Polish (group interaction edge cases)
+
+### 2025-10-03 23:29:30 (Europe/Stockholm) - Grouping System Foundation COMPLETED (Steps 1 & 2)
+
+#### 🎯 MAJOR PROGRESS: GroupManager Model & AppController Integration
+
+**Feature Overview:** Implemented the foundation for the node grouping system - nodes will automatically group when snapped together, enabling synchronized playback across multiple nodes with a shared visual playhead.
+
+### Implementation Components
+
+#### **Step 1: GroupManager Model** (`src/models/GroupManager.js` - NEW FILE)
+
+**Core Functionality Implemented:**
+- Complete group management system using Set-based membership for efficient lookups
+- Group formation and merging logic (`ensureGroupWith`)
+- Group removal and cleanup (`ungroupNode`, `removeEmptyGroups`)
+- Bounds calculation methods (both rect and graph bounds)
+- Playback state management (`startGroupPlayback`, `getGroupProgress`)
+- Comprehensive query methods (`findGroupContaining`, `isNodeGrouped`, `getActiveGroupFor`)
+- Event emission for group lifecycle changes
+- Debug state tracking
+
+**Key Methods:**
+```javascript
+class GroupManager extends EventEmitter {
+  findGroupContaining(node)              // Query which group contains a node
+  ensureGroupWith(nodeA, nodeB)          // Create or merge groups
+  ungroupNode(node)                      // Remove node from its group
+  removeEmptyGroups()                    // Cleanup groups with < 2 members
+  startGroupPlayback(group, startU)      // Begin synchronized playback
+  stopGroupPlayback(group)               // End playback
+  getActiveGroupFor(node)                // Get playing group for node
+  getGroupProgress(group)                // Calculate playback progress (0-1)
+  computeGroupBounds(group)              // Node body bounds
+  computeGroupGraphBounds(group)         // Graph area bounds
+  getActiveGroups()                      // All currently playing groups
+  isNodeGrouped(node)                    // Boolean check
+  getGroupMembers(node)                  // Array of nodes in same group
+}
+```
+
+**Group Data Structure:**
+```javascript
+{
+  members: Set([node1, node2, ...]),  // Nodes in group
+  playStart: timestamp,                // When playback started
+  durationMs: 5000,                    // Total playback duration
+  startX: pixelPosition,               // Where playback began (graph X)
+  runId: uniqueId                      // Current playback session ID
+}
+```
+
+**Architecture Benefits:**
+- Pure model layer - no rendering or UI concerns
+- Event-driven with EventEmitter for lifecycle notifications
+- Clean MVC separation maintained
+- Uses Set for O(1) membership queries
+- Automatic group merging when grouped nodes connect
+- Groups dissolve when reduced to < 2 members
+
+#### **Step 2: AppController Integration** (`src/controllers/AppController.js` - MODIFIED)
+
+**Changes Implemented:**
+1. **Import GroupManager:**
+   - Added `import GroupManager from '../models/GroupManager.js'`
+   - Imported group visual constants (`GROUP_PLAYHEAD_COLOR`, `GROUP_PLAYHEAD_WEIGHT`)
+
+2. **Create GroupManager Instance:**
+   - Added `this.groupManager = new GroupManager()` in constructor
+   - Available to entire application via `this.app.groupManager`
+
+3. **Group Playhead Rendering:**
+   - Implemented `_renderGroupPlayheads()` method
+   - Renders blue vertical playhead across entire group during synchronized playback
+   - Calculates progress from group's playback state
+   - Draws at correct z-order (above connections, below UI overlays)
+
+4. **Integration into Render Pipeline:**
+   - Called `_renderGroupPlayheads()` in `_renderUI()` method
+   - Proper rendering order maintained
+
+**Rendering Logic:**
+```javascript
+_renderGroupPlayheads() {
+  const activeGroups = this.groupManager.getActiveGroups();
+  
+  for (const group of activeGroups) {
+    const bounds = this.groupManager.computeGroupGraphBounds(group);
+    const progress = this.groupManager.getGroupProgress(group);
+    const startX = group.startX || bounds.minGX;
+    const playheadX = startX + (bounds.maxGX - startX) * progress;
+    
+    // Draw blue vertical line across entire group
+    this.canvas.stroke(...GROUP_PLAYHEAD_COLOR);
+    this.canvas.strokeWeight(GROUP_PLAYHEAD_WEIGHT);
+    this.canvas.line(playheadX, bounds.minGY, playheadX, bounds.maxGY);
+  }
+}
+```
+
+#### **Visual Constants Added** (`src/config/constants.js` - MODIFIED)
+
+```javascript
+// Group Visual Constants
+export const GROUP_BORDER_COLOR = [80, 160, 255, 180];  // Light blue, semi-transparent
+export const GROUP_PLAYHEAD_COLOR = [80, 160, 255, 230]; // Brighter blue for playhead
+export const GROUP_BORDER_OFFSET = 1;  // Pixels from node edge
+export const GROUP_PLAYHEAD_WEIGHT = 2;  // Stroke weight for group playhead
+```
+
+### Files Modified
+
+1. **NEW**: `src/models/GroupManager.js` - Complete group management system
+2. **MODIFIED**: `src/controllers/AppController.js` - GroupManager integration and playhead rendering
+3. **MODIFIED**: `src/config/constants.js` - Group visual constants
+
+### Architecture Compliance
+
+**Perfect MVC Separation:**
+- **Model (GroupManager):** Pure business logic for group management, no rendering
+- **View (CanvasManager):** Rendering handled via existing draw methods
+- **Controller (AppController):** Coordination only, no business logic
+
+**Event-Driven Design:**
+- GroupManager emits events for group lifecycle changes:
+  - `group-created`, `group-merged`, `group-removed`
+  - `node-added-to-group`, `node-removed-from-group`
+  - `group-playback-started`, `group-playback-stopped`
+- Ready for UI components to subscribe and react
+
+**Clean Integration:**
+- No breaking changes to existing systems
+- GroupManager works alongside node/trigger/connection systems
+- Foundation ready for remaining integration steps
+
+### Current Project Status
+
+**Phase 5: Advanced Features - IN PROGRESS**
+
+**Grouping System Progress:**
+- ✅ Step 1: GroupManager Model - COMPLETE
+- ✅ Step 2: AppController Integration - COMPLETE
+- ⏳ Step 3: WaveformNode Enhancement - PENDING
+- ⏳ Step 4: InteractionController Integration - PENDING
+- ⏳ Step 5: Visual Group Indicator - PENDING
+- ⏳ Step 6: Testing & Polish - PENDING
+
+**Overall Completion: Still 71% (infrastructure ready, integration pending)**
+
+### Technical Verification
+
+**Console Logging Ready:**
+- GroupManager logs all group operations for debugging
+- Group formation/merging tracked
+- Playback start/stop events logged
+- Member additions/removals documented
+
+**Architecture Quality:**
+- Single responsibility principle maintained
+- No circular dependencies
+- Event-driven communication
+- Testable isolated components
+
+### Next Priorities
+
+#### **Immediate: Step 3 - Enhance WaveformNode**
+- Modify `node.update()` to check group membership first
+- Add `_updateGroupPlayback()` method for synchronized timing
+- Ensure trigger firing works with group playhead
+- Maintain backward compatibility with standalone playback
+
+#### **Following: Step 4 - InteractionController Integration**
+- Store `snapTarget` during drag operations
+- Call `ensureGroupWith()` when snap detected on drag release
+- Add Shift+click ungrouping handler
+- Test group formation during node dragging
+
+#### **Then: Step 5 - Visual Group Indicator**
+- Add 1px blue border rendering around grouped nodes
+- Import `GROUP_BORDER_COLOR` constant to NodeRenderer
+- Show border even when group is not playing
+- Update on group membership changes
+
+#### **Finally: Step 6 - Testing & Polish**
+- Test all grouping interactions
+- Verify synchronized playback accuracy
+- Test group merging scenarios
+- Edge case handling (single node groups, empty groups)
+- Performance testing with many groups
+
 ### 2025-09-30 21:32:50 (Europe/Stockholm) - Alt+Drag Node Duplication Feature COMPLETED
 
 #### 🎉 NEW FEATURE: Alt+Left-Drag Node Duplication with Visual Feedback

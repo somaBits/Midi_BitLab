@@ -118,6 +118,39 @@ export default class WaveformNode extends Node {
       return;
     }
     
+    // Check if we're in an active group
+    const activeGroup = this._getActiveGroup();
+    
+    if (activeGroup) {
+      // Use group synchronized playback
+      this._updateGroupPlayback(activeGroup);
+    } else {
+      // Use standalone playback
+      this._updateStandalonePlayback(deltaTime);
+    }
+    
+    // Update port states (flash timing, etc.)
+    this._updatePortStates();
+  }
+
+  /**
+   * Get active group for this node (if any)
+   * @returns {object|null} Active group or null
+   * @private
+   */
+  _getActiveGroup() {
+    // Access global app instance to query GroupManager
+    if (!window.app || !window.app.groupManager) return null;
+    
+    return window.app.groupManager.getActiveGroupFor(this);
+  }
+
+  /**
+   * Update standalone playback (original behavior)
+   * @param {number} deltaTime - Time since last update in ms
+   * @private
+   */
+  _updateStandalonePlayback(deltaTime) {
     // Update playback progress
     const elapsed = performance.now() - this.playStartTime;
     const segmentProgress = clamp(elapsed / this.remainingDurationMs, 0, 1);
@@ -130,11 +163,50 @@ export default class WaveformNode extends Node {
     // Update trigger port states and check for firing
     this._updateTriggerPorts();
     
-    // Update port states (flash timing, etc.)
-    this._updatePortStates();
-    
     // Check if playback is complete
     if (this.playProgress >= 1.0) {
+      this.stopPlayback();
+      this.emit('playback-complete', { node: this });
+    }
+  }
+
+  /**
+   * Update group synchronized playback
+   * @param {object} group - Active group from GroupManager
+   * @private
+   */
+  _updateGroupPlayback(group) {
+    if (!window.app || !window.app.groupManager) {
+      // Fallback to standalone if GroupManager unavailable
+      this._updateStandalonePlayback(0);
+      return;
+    }
+    
+    // Get group's shared progress (0-1)
+    const groupProgress = window.app.groupManager.getGroupProgress(group);
+    
+    // Get group's graph bounds
+    const groupBounds = window.app.groupManager.computeGroupGraphBounds(group);
+    
+    // Calculate current X position in group's coordinate space
+    const startX = group.startX || groupBounds.minGX;
+    const currentGroupX = startX + (groupBounds.maxGX - startX) * groupProgress;
+    
+    // Convert to our local normalized position (0-1)
+    const graphRect = this.getGraphRect();
+    const localU = clamp((currentGroupX - graphRect.gx) / graphRect.gw, 0, 1);
+    
+    // Update our playback progress
+    this.playProgress = localU;
+    
+    // Update visual playhead position (uses group's shared X)
+    this.playheadX = currentGroupX;
+    
+    // Update trigger port states and check for firing
+    this._updateTriggerPorts();
+    
+    // Check if group playback is complete (GroupManager handles this)
+    if (groupProgress >= 1.0) {
       this.stopPlayback();
       this.emit('playback-complete', { node: this });
     }
@@ -172,6 +244,23 @@ export default class WaveformNode extends Node {
    */
   sendCurrentCC(midiManager) {
     if (!this.playing || !midiManager || !midiManager.ready) return;
+    
+    // Check if in group playback mode
+    const activeGroup = this._getActiveGroup();
+    if (activeGroup) {
+      // In group playback: only send CC when blue playhead is inside this node's bounds
+      const groupBounds = window.app.groupManager.computeGroupGraphBounds(activeGroup);
+      const progress = window.app.groupManager.getGroupProgress(activeGroup);
+      const startX = activeGroup.startX || groupBounds.minGX;
+      const playheadX = startX + (groupBounds.maxGX - startX) * progress;
+      
+      // Check if playhead is inside this node's graph rect
+      const graphRect = this.getGraphRect();
+      if (playheadX < graphRect.gx || playheadX > graphRect.gx + graphRect.gw) {
+        // Playhead not in this node yet - don't send CC
+        return;
+      }
+    }
     
     const currentValue = this.getCurrentValue();
     const ccValue = clamp(Math.round(currentValue * CC_MAX_VALUE), 0, CC_MAX_VALUE);

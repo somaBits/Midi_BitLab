@@ -6,6 +6,7 @@
 
 import MidiManager from '../models/MidiManager.js';
 import WaveformNode from '../models/WaveformNode.js';
+import GroupManager from '../models/GroupManager.js';
 import CanvasManager from '../views/CanvasManager.js';
 import NodeRenderer from '../views/NodeRenderer.js';
 import SidebarRenderer from '../views/SidebarRenderer.js';
@@ -19,13 +20,20 @@ import {
   DELETE_ICON_R,
   KEY_ESCAPE,
   KEY_ENTER,
-  KEY_SPACE
+  KEY_SPACE,
+  GROUP_PLAYHEAD_COLOR,
+  GROUP_PLAYHEAD_WEIGHT,
+  GROUP_BORDER_COLOR,
+  GROUP_OUTLINE_COLOR,
+  GROUP_BORDER_OFFSET,
+  GROUP_BORDER_DASH
 } from '../config/constants.js';
 
 export default class AppController {
   constructor() {
     // Core systems
     this.midi = new MidiManager();
+    this.groupManager = new GroupManager();
     this.canvas = new CanvasManager();
     this.nodeRenderer = new NodeRenderer(this.canvas);
     this.sidebar = new SidebarRenderer();
@@ -184,6 +192,27 @@ export default class AppController {
         this.recordingRenderer.clearBuffers();
       }
     }
+    
+    // NEW: Handle Shift key press during drag (for dynamic grouping mode)
+    if (keyCode === 16) { // Shift key
+      if (this.interaction && this.interaction.dragState.active) {
+        console.log('🔵 GROUPING: Shift pressed during drag - entering grouping mode');
+        this.interaction.shiftPressed = true;
+      }
+    }
+  }
+
+  /**
+   * Handle key release events
+   */
+  keyReleased() {
+    // NEW: Handle Shift key release during drag (exit grouping mode)
+    if (keyCode === 16) { // Shift key
+      if (this.interaction && this.interaction.dragState.active) {
+        console.log('🔵 GROUPING: Shift released during drag - exiting grouping mode');
+        this.interaction.shiftPressed = false;
+      }
+    }
   }
 
   /**
@@ -305,6 +334,13 @@ export default class AppController {
       this.canvas.drawGuideLine(false, interactionUI.guideH);
     }
     
+    // Render group visual indicators
+    this._renderGroupOutlines();     // White permanent outlines for formed groups
+    this._renderGroupPreview();      // Blue preview outline during Shift+drag snap
+    
+    // Render group playheads (synchronized playback visualization)
+    this._renderGroupPlayheads();
+    
     // Render deletion overlays - Universal delete system
     if (this.interaction.deletionState.target) {
       this._renderDeleteIcon(this.interaction.deletionState);
@@ -312,6 +348,237 @@ export default class AppController {
     
     // Render status info
     this._renderStatusInfo();
+  }
+
+  /**
+   * Calculate connected perimeter vertices for a set of nodes
+   * @param {Array} nodes - Array of nodes to trace perimeter around
+   * @param {number} offset - Offset distance from node edges
+   * @returns {Array} Array of {x, y} vertices forming the perimeter path
+   * @private
+   */
+  _calculateGroupPerimeter(nodes, offset) {
+    if (nodes.length === 0) return [];
+    if (nodes.length === 1) {
+      // Single node - simple rectangle
+      const node = nodes[0];
+      return [
+        { x: node.x - offset, y: node.y - offset },
+        { x: node.x + node.w + offset, y: node.y - offset },
+        { x: node.x + node.w + offset, y: node.y + node.h + offset },
+        { x: node.x - offset, y: node.y + node.h + offset }
+      ];
+    }
+    
+    // Multiple nodes - trace outer perimeter
+    // Collect all edge segments
+    const segments = [];
+    
+    for (const node of nodes) {
+      // Check each edge to see if it's exterior (not adjacent to another group member)
+      const nodeRect = {
+        x: node.x,
+        y: node.y,
+        w: node.w,
+        h: node.h
+      };
+      
+      // Check if top edge is exterior
+      const hasNodeAbove = nodes.some(other => {
+        if (other === node) return false;
+        // Check if other node is directly above (vertically adjacent)
+        return Math.abs((other.y + other.h) - node.y) < 2 &&
+               other.x < (node.x + node.w) && (other.x + other.w) > node.x;
+      });
+      
+      if (!hasNodeAbove) {
+        segments.push({
+          type: 'horizontal',
+          y: node.y - offset,
+          x1: node.x - offset,
+          x2: node.x + node.w + offset
+        });
+      }
+      
+      // Check if right edge is exterior
+      const hasNodeRight = nodes.some(other => {
+        if (other === node) return false;
+        // Check if other node is directly to right (horizontally adjacent)
+        return Math.abs(other.x - (node.x + node.w)) < 2 &&
+               other.y < (node.y + node.h) && (other.y + other.h) > node.y;
+      });
+      
+      if (!hasNodeRight) {
+        segments.push({
+          type: 'vertical',
+          x: node.x + node.w + offset,
+          y1: node.y - offset,
+          y2: node.y + node.h + offset
+        });
+      }
+      
+      // Check if bottom edge is exterior
+      const hasNodeBelow = nodes.some(other => {
+        if (other === node) return false;
+        // Check if other node is directly below (vertically adjacent)
+        return Math.abs(other.y - (node.y + node.h)) < 2 &&
+               other.x < (node.x + node.w) && (other.x + other.w) > node.x;
+      });
+      
+      if (!hasNodeBelow) {
+        segments.push({
+          type: 'horizontal',
+          y: node.y + node.h + offset,
+          x1: node.x - offset,
+          x2: node.x + node.w + offset
+        });
+      }
+      
+      // Check if left edge is exterior
+      const hasNodeLeft = nodes.some(other => {
+        if (other === node) return false;
+        // Check if other node is directly to left (horizontally adjacent)
+        return Math.abs((other.x + other.w) - node.x) < 2 &&
+               other.y < (node.y + node.h) && (other.y + other.h) > node.y;
+      });
+      
+      if (!hasNodeLeft) {
+        segments.push({
+          type: 'vertical',
+          x: node.x - offset,
+          y1: node.y - offset,
+          y2: node.y + node.h + offset
+        });
+      }
+    }
+    
+    // For now, fallback to simple bounding box
+    // (Full perimeter tracing algorithm would require segment sorting and connection)
+    const minX = Math.min(...nodes.map(n => n.x)) - offset;
+    const minY = Math.min(...nodes.map(n => n.y)) - offset;
+    const maxX = Math.max(...nodes.map(n => n.x + n.w)) + offset;
+    const maxY = Math.max(...nodes.map(n => n.y + n.h)) + offset;
+    
+    return [
+      { x: minX, y: minY },
+      { x: maxX, y: minY },
+      { x: maxX, y: maxY },
+      { x: minX, y: maxY }
+    ];
+  }
+
+  /**
+   * Render blue preview outline during Shift+drag snap
+   * Shows which nodes will be grouped when drag is released
+   * @private
+   */
+  _renderGroupPreview() {
+    // Check if we're showing group preview
+    if (!this.interaction.dragState.showGroupPreview) return;
+    
+    const draggedNode = this.interaction.dragState.node;
+    const snapTarget = this.interaction.dragState.snapTarget;
+    
+    if (!draggedNode || !snapTarget) return;
+    
+    // Calculate unified bounding box around both nodes
+    const minX = Math.min(draggedNode.x, snapTarget.x);
+    const minY = Math.min(draggedNode.y, snapTarget.y);
+    const maxX = Math.max(draggedNode.x + draggedNode.w, snapTarget.x + snapTarget.w);
+    const maxY = Math.max(draggedNode.y + draggedNode.h, snapTarget.y + snapTarget.h);
+    
+    // Set blue semi-transparent stroke with dashed pattern
+    this.canvas.stroke(...GROUP_BORDER_COLOR);
+    this.canvas.strokeWeight(1);
+    this.canvas.noFill();
+    this.canvas.drawingContext.setLineDash(GROUP_BORDER_DASH);
+    
+    // Draw single unified fence around both nodes with 1px offset
+    const offset = GROUP_BORDER_OFFSET;
+    this.canvas.rect(
+      minX - offset,
+      minY - offset,
+      (maxX - minX) + offset * 2,
+      (maxY - minY) + offset * 2
+    );
+    
+    // Reset line dash for subsequent rendering
+    this.canvas.drawingContext.setLineDash([]);
+  }
+
+  /**
+   * Render white permanent outline around grouped nodes
+   * Shows which nodes are in formed groups
+   * @private
+   */
+  _renderGroupOutlines() {
+    // Set white semi-transparent stroke with dashed pattern
+    this.canvas.stroke(...GROUP_OUTLINE_COLOR);
+    this.canvas.strokeWeight(1);
+    this.canvas.noFill();
+    this.canvas.drawingContext.setLineDash(GROUP_BORDER_DASH);
+    
+    const offset = GROUP_BORDER_OFFSET;
+    
+    // Get all groups and draw unified fence around each
+    const processedGroups = new Set();
+    
+    for (const node of this.nodes) {
+      if (!this.groupManager.isNodeGrouped(node)) continue;
+      
+      // Get this node's group
+      const group = this.groupManager.findGroupContaining(node);
+      if (!group || processedGroups.has(group)) continue;
+      
+      // Mark group as processed to avoid drawing multiple times
+      processedGroups.add(group);
+      
+      // Get all nodes in this group
+      const groupNodes = Array.from(group.members);
+      
+      // Calculate unified bounding box around all group members
+      const minX = Math.min(...groupNodes.map(n => n.x));
+      const minY = Math.min(...groupNodes.map(n => n.y));
+      const maxX = Math.max(...groupNodes.map(n => n.x + n.w));
+      const maxY = Math.max(...groupNodes.map(n => n.y + n.h));
+      
+      // Draw single unified fence around entire group with 1px offset
+      this.canvas.rect(
+        minX - offset,
+        minY - offset,
+        (maxX - minX) + offset * 2,
+        (maxY - minY) + offset * 2
+      );
+    }
+    
+    // Reset line dash for subsequent rendering
+    this.canvas.drawingContext.setLineDash([]);
+  }
+
+  /**
+   * Render group playheads for active groups
+   * Shows synchronized playback progress across grouped nodes
+   * @private
+   */
+  _renderGroupPlayheads() {
+    const activeGroups = this.groupManager.getActiveGroups();
+    
+    for (const group of activeGroups) {
+      // Get graph bounds for the entire group
+      const bounds = this.groupManager.computeGroupGraphBounds(group);
+      
+      // Get current playback progress (0-1)
+      const progress = this.groupManager.getGroupProgress(group);
+      
+      // Calculate playhead X position
+      const startX = group.startX || bounds.minGX;
+      const playheadX = startX + (bounds.maxGX - startX) * progress;
+      
+      // Draw blue vertical line across entire group
+      this.canvas.stroke(...GROUP_PLAYHEAD_COLOR);
+      this.canvas.strokeWeight(GROUP_PLAYHEAD_WEIGHT);
+      this.canvas.line(playheadX, bounds.minGY, playheadX, bounds.maxGY);
+    }
   }
 
   /**
@@ -413,6 +680,9 @@ export default class AppController {
   _onRecordingCommitted(data) {
     console.log(`Recording committed: ${data.tracksCommitted} tracks`);
     
+    // Track all nodes created from this recording session
+    const createdNodes = [];
+    
     // Create nodes from recording data
     for (const nodeData of data.nodeDataList) {
       const node = new WaveformNode(
@@ -427,6 +697,21 @@ export default class AppController {
       node.setSourceDeviceName(nodeData.sourceDeviceName);
       
       this.addNode(node);
+      createdNodes.push(node);
+    }
+    
+    // Auto-group nodes if multiple CCs were recorded simultaneously
+    if (createdNodes.length > 1) {
+      console.log(`🔵 GROUPING: Auto-grouping ${createdNodes.length} simultaneously recorded nodes`);
+      
+      // Link all created nodes together in a group
+      // Start with first node, then link each subsequent node to it
+      const firstNode = createdNodes[0];
+      for (let i = 1; i < createdNodes.length; i++) {
+        this.groupManager.ensureGroupWith(firstNode, createdNodes[i]);
+      }
+      
+      console.log(`✅ Created group with ${createdNodes.length} nodes from recording session`);
     }
     
     // Clear recording renderer buffers
@@ -481,10 +766,22 @@ export default class AppController {
   stopAllPlayback() {
     let stoppedCount = 0;
     
+    // Stop individual nodes
     for (const node of this.nodes) {
       if (node.playing) {
         node.stopPlayback();
         stoppedCount++;
+      }
+    }
+    
+    // Stop all active groups to clear blue playhead
+    if (this.groupManager) {
+      const activeGroups = this.groupManager.getActiveGroups();
+      for (const group of activeGroups) {
+        this.groupManager.stopGroupPlayback(group);
+      }
+      if (activeGroups.length > 0) {
+        console.log(`Stopped ${activeGroups.length} active group(s)`);
       }
     }
     
