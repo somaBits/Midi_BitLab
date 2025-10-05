@@ -1026,9 +1026,232 @@ Stopped 1 active group(s)
 - **Visual Consistency:** Blue playhead disappears as expected
 - **User Experience:** Matches expected behavior for stop-all operation
 
+### 2025-10-05 00:18:00 (Europe/Stockholm) - Complete Group Movement System COMPLETED
+
+#### 🎉 MAJOR FEATURE: Unified Group Movement with Auto-Ungrouping
+
+**Feature Overview:** Implemented complete group movement system allowing grouped nodes to be dragged together while maintaining relative positioning, plus 30px auto-ungrouping during Shift+drag for repositioning.
+
+#### Implementation Components
+
+**1. Group Movement Detection (InteractionController._startNodeDrag):**
+- **Group Detection:** Checks if clicked node is part of a group AND Shift is NOT held
+- **Group Member Collection:** Gets all group members via `groupManager.getGroupMembers()`
+- **Offset Calculation:** Stores each member's relative position to dragged node
+- **Drag Mode Flags:** Sets `isGroupDrag: true` and stores `groupMembers` array
+
+**2. Synchronized Group Movement (InteractionController._handleNodeDrag):**
+- **Leader Movement:** Updates dragged node position normally
+- **Follower Movement:** Updates all group members using stored offsets
+- **Snapping Behavior:** Grouping snap DISABLED during group drag (prevents unintended merges)
+- **Relative Positioning:** Each member maintains its offset from leader node
+
+**3. 30px Auto-Ungrouping (InteractionController._handleNodeDrag):**
+- **Shift Detection:** Only applies during Shift+drag (individual repositioning mode)
+- **Distance Calculation:** Measures center-to-center distance to nearest group member
+- **Threshold Check:** When distance exceeds `UNGROUP_DISTANCE` (30px)
+- **Automatic Ungrouping:** Calls `groupManager.ungroupNode()` automatically
+- **Visual Feedback:** White outline disappears, console logs ungrouping event
+
+**4. Group Playback Click Handler (InteractionController._handleDragRelease):**
+- **RESTORATION FIX:** Re-added group playback detection on click (not drag)
+- **Group Detection:** Checks if clicked node is grouped
+- **Synchronized Start:** Starts playback for ALL nodes in group
+- **GroupManager Tracking:** Calls `startGroupPlayback()` to track blue playhead state
+- **Console Logging:** Enhanced with group member details
+
+**5. Group Playback Completion Fix (GroupManager.stopGroupPlayback):**
+- **CRITICAL FIX:** Added code to stop all individual nodes when group playback completes
+- **Node Iteration:** Loops through all group members
+- **Playback Stop:** Calls `node.stopPlayback()` on each playing node
+- **State Clearing:** Clears group's `playStart` and `runId` as before
+- **Result:** No red playheads appear after blue playhead completes
+
+#### Technical Implementation
+
+**Group Movement Flow:**
+```javascript
+// On mouse press:
+1. User clicks grouped node WITHOUT Shift
+2. _startNodeDrag() detects group membership
+3. Collects all group members and calculates offsets
+4. Sets isGroupDrag flag
+
+// During drag:
+1. Leader node moves to mouse position
+2. Each follower node updated: leader.position + offset
+3. All nodes move together maintaining spacing
+4. Grouping snap disabled (prevents accidental merges)
+
+// On release:
+1. All nodes stop dragging
+2. Drag state cleared
+```
+
+**Auto-Ungrouping Flow:**
+```javascript
+// During Shift+drag:
+1. User holds Shift and drags grouped node
+2. Only that node moves (not group)
+3. Distance calculated to nearest group member
+4. When distance > 30px:
+   - groupManager.ungroupNode(node) called
+   - White outline disappears
+   - Console logs ungrouping event
+```
+
+**Group Playback Fix Flow:**
+```javascript
+// Click detection (restored):
+1. Mouse press and release without moving
+2. Check if node is in a group
+3. If grouped:
+   - Start ALL group member nodes playing
+   - Call GroupManager.startGroupPlayback()
+   - Blue playhead begins sweep
+4. If standalone:
+   - Start node playing normally
+   - Red playhead shows
+
+// Playback completion (fixed):
+1. Blue playhead reaches end (progress >= 1)
+2. stopGroupPlayback() called automatically
+3. ALL member nodes stopped: node.stopPlayback()
+4. Group state cleared: playStart = null
+5. Result: No red playheads appear
+```
+
+#### Constants Added
+
+**UNGROUP_DISTANCE (constants.js):**
+```javascript
+export const UNGROUP_DISTANCE = 30; // Pixels - auto-ungroup threshold
+```
+
+#### Verification Results
+
+**Group Movement Testing:**
+- ✅ Drag grouped node → entire group moves together
+- ✅ Relative spacing maintained during movement
+- ✅ Snapping disabled during group drag (no unintended merges)
+- ✅ Console logs: "🔵 GROUP DRAG: Moving N nodes together"
+- ✅ All nodes' dragging state synchronized
+
+**Auto-Ungrouping Testing:**
+- ✅ Shift+drag grouped node → moves individually
+- ✅ Distance >30px → automatic ungrouping
+- ✅ White outline disappears immediately
+- ✅ Console logs: "🔵 AUTO-UNGROUP: 'CC X' moved Npx from group (threshold: 30px)"
+
+**Group Playback Testing:**
+- ✅ Click grouped node → all nodes start playing
+- ✅ Blue playhead sweeps across entire group
+- ✅ No red playheads visible during blue playhead
+- ✅ Blue playhead completes → ALL playback stops
+- ✅ No red playheads appear after completion
+- ✅ Console logs: "🔵 GROUP PLAYBACK: Clicked grouped node..."
+
+#### Console Log Evidence
+
+**Group Movement:**
+```
+🔵 GROUP DRAG: Moving 3 nodes together
+🔵 GROUP DRAG COMPLETE: Moved 3 nodes together to (450, 300)
+```
+
+**Auto-Ungrouping:**
+```
+🔵 INDIVIDUAL DRAG: Shift held - dragging "CC 10" individually
+🔵 AUTO-UNGROUP: "CC 10" moved 35px from group (threshold: 30px)
+  → Node is now standalone
+```
+
+**Group Playback:**
+```
+🔵 GROUP PLAYBACK: Clicked grouped node "CC 74"
+  Starting synchronized playback for group: [CC 1, CC 74, CC 10]
+  → Blue group playhead will sweep across all 3 nodes
+
+GroupManager: Stopped group playback and all member nodes (3 nodes)
+```
+
+#### Files Modified
+- `src/config/constants.js` - Added UNGROUP_DISTANCE constant
+- `src/controllers/InteractionController.js` - Added group movement, auto-ungrouping, group playback click handler
+- `src/models/GroupManager.js` - Fixed stopGroupPlayback() to stop all nodes
+
+#### Architecture Compliance
+
+**MVC Separation Maintained:**
+- **Models:** GroupManager handles group logic, WaveformNode handles playback
+- **Views:** NodeRenderer hides red playheads during group playback (already implemented)
+- **Controllers:** InteractionController coordinates movement, AppController renders blue playhead
+
+**Event-Driven Design:**
+- Group detection uses GroupManager queries
+- Node movement uses existing setPosition() methods
+- Playback uses existing node playback infrastructure
+- Clean separation of concerns throughout
+
+#### User Experience Achievements
+
+**Intuitive Interaction:**
+- Drag grouped nodes → they move together naturally
+- Shift+drag → repositions within group
+- Too far → automatically ungroups
+- Click → synchronized playback with blue sweep
+
+**Visual Feedback:**
+- White dashed outline shows grouping
+- Blue playhead shows synchronized playback
+- No conflicting red playheads during group play
+- Clear console logging for all operations
+
+#### Impact on Project Status
+
+**Overall Completion:** Maintains 71% with major grouping system complete
+
+**Major Systems Enhanced:**
+- ✅ **Grouping System**: Formation, movement, auto-ungrouping complete
+- ✅ **Group Playback**: Click detection, blue playhead, completion handling
+- ✅ **Visual Consistency**: Playhead hiding, proper cleanup
+
+**Phase Status:**
+- ✅ **Phase 1**: Foundation - COMPLETE
+- ✅ **Phase 2**: Recording System - COMPLETE  
+- ✅ **Phase 3**: Trigger System - COMPLETE
+- ✅ **Phase 4**: Connection System - COMPLETE
+- ⚠️ **Phase 5**: Advanced Features - GROUP SYSTEM COMPLETE
+
+#### Critical Bugs Fixed
+
+**Bug #1: Group Playback Click Handler Missing**
+- **Problem:** Blue playhead click handler removed during group movement implementation
+- **Impact:** Group playback completely broken
+- **Fix:** Restored click detection in _handleDragRelease()
+- **Result:** Click grouped node → synchronized playback
+
+**Bug #2: Red Playheads Visible During Blue Playhead**
+- **Problem:** Individual red playheads showing alongside blue group playhead
+- **Root Cause:** NodeRenderer check was correct, but nodes stayed in playing state
+- **Fix:** GroupManager.stopGroupPlayback() now stops all individual nodes
+- **Result:** Only blue playhead visible, clean completion
+
+**Bug #3: Red Playheads After Blue Playhead Completes**
+- **Problem:** After blue playhead finished, red playheads appeared and continued
+- **Root Cause:** stopGroupPlayback() only cleared group state, didn't stop nodes
+- **Fix:** Added loop to stop all member nodes before clearing group state
+- **Result:** Complete silence after group playback ends
+
+#### Next Priorities
+- Multi-selection system for nodes and connections
+- Advanced UI enhancements (keyboard shortcuts, context menus)
+- Performance optimization for complex scenes
+- Save/load system for project persistence
+
 ---
 
-## Current Implementation Status (October 4, 2025)
+## Current Implementation Status (October 5, 2025)
 
 **Total Implementation: 15/21 Planned Components = 71% Complete**
 
@@ -1037,12 +1260,14 @@ Stopped 1 active group(s)
 - ✅ **Phase 2**: Recording System - COMPLETE  
 - ✅ **Phase 3**: Trigger System - COMPLETE
 - ✅ **Phase 4**: Connection System - COMPLETE
-- ⚠️ **Phase 5**: Advanced Features - IN PROGRESS
+- ⚠️ **Phase 5**: Advanced Features - GROUP SYSTEM COMPLETE
 
 **Recent Achievements:**
-- ✅ Group playback visual refinements (hide red playheads, delayed CC)
-- ✅ VTrigger-initiated group playback with starting position control
-- ✅ Spacebar group playback stopping fix
+- ✅ Complete group movement system (drag grouped nodes together)
+- ✅ 30px auto-ungrouping during Shift+drag individual repositioning
+- ✅ Group playback click handler restoration (blue playhead)
+- ✅ Fixed playhead visibility (only blue during group play, none after completion)
+- ✅ Auto-grouping for simultaneously recorded CCs
 
 **Next Priorities:**
 - Multi-selection system for nodes and connections
@@ -1518,6 +1743,148 @@ Release mouse → resetCursor() → default or hover state
 - Group playback coordination
 - Advanced UI enhancements and polish
 - Consider Alt+hover cursor feedback (show 'copy' cursor when Alt held over node)
+
+### 2025-10-05 00:38:00 (Europe/Stockholm) - Auto-Grouping for Simultaneously Recorded CCs COMPLETED
+
+#### 🎯 MAJOR FEATURE: Automatic Group Formation from Multi-CC Recording Sessions
+
+**Feature Overview:** Implemented automatic grouping for simultaneously recorded CC messages - when multiple CCs are recorded in a single session and committed, they now automatically form a group for synchronized playback.
+
+#### Implementation Components
+
+**Modified AppController._onRecordingCommitted() (AppController.js):**
+- **Track Created Nodes:** Added `createdNodes` array to collect all nodes created from a recording session
+- **Auto-Grouping Logic:** After creating all nodes, check if multiple nodes were created (`createdNodes.length > 1`)
+- **Group Formation:** Use `GroupManager.ensureGroupWith()` to link all created nodes together
+- **Incremental Linking:** Links each node to the first node, allowing GroupManager to handle group merging
+
+#### Technical Implementation
+
+**Auto-Grouping Code:**
+```javascript
+_onRecordingCommitted(data) {
+  console.log(`Recording committed: ${data.tracksCommitted} tracks`);
+  
+  // Track all nodes created from this recording session
+  const createdNodes = [];
+  
+  // Create nodes from recording data
+  for (const nodeData of data.nodeDataList) {
+    const node = new WaveformNode(...);
+    this.addNode(node);
+    createdNodes.push(node);
+  }
+  
+  // Auto-group nodes if multiple CCs were recorded simultaneously
+  if (createdNodes.length > 1) {
+    console.log(`🔵 GROUPING: Auto-grouping ${createdNodes.length} simultaneously recorded nodes`);
+    
+    const firstNode = createdNodes[0];
+    for (let i = 1; i < createdNodes.length; i++) {
+      this.groupManager.ensureGroupWith(firstNode, createdNodes[i]);
+    }
+    
+    console.log(`✅ Created group with ${createdNodes.length} nodes from recording session`);
+  }
+  
+  this.recordingRenderer.clearBuffers();
+}
+```
+
+#### User Workflow
+
+**Recording Multiple CCs:**
+1. Start recording (click empty space)
+2. Send multiple CC messages (e.g., CC 1, CC 74, CC 10) within 5ms window
+3. Watch multiple tracks stack vertically during recording
+4. Commit recording (Enter or left-click on track)
+
+**Automatic Result:**
+- ✅ Multiple nodes created (one per CC)
+- ✅ White dashed outline appears around all nodes immediately
+- ✅ Nodes automatically grouped for synchronized playback
+- ✅ Clicking any node triggers synchronized playback across all group members
+
+#### Architecture Benefits
+
+**Clean MVC Integration:**
+- **Models:** GroupManager handles all grouping logic
+- **Controllers:** AppController coordinates recording → grouping workflow
+- **Views:** Existing rendering automatically shows group indicators
+
+**Leverages Existing Infrastructure:**
+- Uses GroupManager's `ensureGroupWith()` method (already tested)
+- No new rendering code needed - white dashed outlines already implemented
+- Group playback system already functional from previous implementation
+
+**Minimal Code Changes:**
+- Only modified one method in AppController
+- Added ~15 lines of code for complete feature
+- No breaking changes to existing functionality
+
+#### Console Log Evidence
+
+**Recording Single CC:**
+```
+Recording committed: 1 tracks
+Added node: CC 74 at (300, 200)
+```
+
+**Recording Multiple CCs:**
+```
+Recording committed: 3 tracks
+Added node: CC 1 at (300, 200)
+Added node: CC 74 at (300, 280)
+Added node: CC 10 at (300, 360)
+🔵 GROUPING: Auto-grouping 3 simultaneously recorded nodes
+✅ Created group with 3 nodes from recording session
+```
+
+#### Verification Testing
+
+**Single CC Recording:**
+- ✅ Creates single node (no grouping)
+- ✅ No console grouping messages
+- ✅ No white dashed outline
+
+**Multi-CC Recording:**
+- ✅ Creates multiple nodes stacked vertically
+- ✅ Auto-grouping console messages appear
+- ✅ White dashed outline appears immediately
+- ✅ Synchronized playback works on group trigger
+
+**Group Playback:**
+- ✅ Clicking any node starts entire group
+- ✅ Blue playhead sweeps across all nodes
+- ✅ CC output happens sequentially as playhead enters each node
+- ✅ Spacebar stops all nodes and clears blue playhead
+
+#### Files Modified
+- `src/controllers/AppController.js` - Enhanced `_onRecordingCommitted()` with auto-grouping logic
+
+#### Impact on Project Status
+- **Recording System:** Now seamlessly integrates with grouping system
+- **User Experience:** Intuitive behavior - related recordings automatically grouped
+- **Workflow Efficiency:** No manual grouping step required for simultaneous recordings
+- **Overall Completion:** Maintains 71% with enhanced recording workflow
+
+#### Design Rationale
+
+**Why Auto-Group:**
+1. **Logical Association:** CCs recorded together should play together
+2. **Workflow Efficiency:** Eliminates manual grouping step
+3. **User Intent:** Recording multiple CCs simultaneously implies relationship
+4. **Professional Behavior:** Matches expectations from DAW software
+
+**Alternative Considered (Manual Grouping):**
+- User manually Shift+drags to group nodes after recording
+- More steps, less intuitive
+- Doesn't match implied user intent
+
+#### Next Priorities
+- Multi-selection system for nodes and connections
+- Advanced UI enhancements and polish
+- Performance optimization for complex scenes
 
 ### 2025-10-02 18:00:00 (Europe/Stockholm) - Recording System Visualization FIXED
 

@@ -19,11 +19,28 @@ export default class Port {
   }
 
   /**
-   * Generate unique ID
+   * Generate stable, deterministic ID for this port
+   * Format: {nodeId}_{triggerType}_{triggerIndex}_{portType}
+   * This allows connections to be restored after save/load
    * @private
    */
   _generateId() {
-    return `port_${this.type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const node = this.trigger.node;
+    if (!node) {
+      console.warn('Port created without valid node - using fallback ID');
+      return `port_${this.type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
+    // Determine trigger type and index
+    const isVTrigger = this.trigger.constructor.name === 'VTrigger';
+    const triggerArray = isVTrigger ? node.vTriggers : node.hTriggers;
+    const triggerIndex = triggerArray.indexOf(this.trigger);
+    const triggerType = isVTrigger ? 'vtrig' : 'htrig';
+    
+    // Handle case where trigger isn't in array yet (during construction)
+    const index = triggerIndex >= 0 ? triggerIndex : triggerArray.length;
+    
+    return `${node.id}_${triggerType}_${index}_${this.type}`;
   }
 
   /**

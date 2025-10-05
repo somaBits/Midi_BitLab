@@ -77,6 +77,8 @@ export const FONT_FAMILY = 'sans-serif';
 // Key Codes
 export const KEY_ALT = 18;
 export const KEY_SHIFT = 16;
+export const KEY_CONTROL = 17;
+export const KEY_COMMAND = 91; // macOS Command key
 export const KEY_ESCAPE = 27;
 export const KEY_ENTER = 13;
 export const KEY_SPACE = 32;

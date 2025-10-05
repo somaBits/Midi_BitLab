@@ -14,6 +14,7 @@ export default class SidebarRenderer {
     this.channelSelect = null;
     this.inputAllCheckbox = null;
     this.outputAllCheckbox = null;
+    this.projectNameElement = null;
     
     // State
     this.collapsed = false;
@@ -88,6 +89,7 @@ export default class SidebarRenderer {
 
     // Create content sections
     this.createTitle();
+    this.createProjectSection();
     this.createInputSection();
     this.createOutputSection();
     this.createChannelSection();
@@ -108,6 +110,140 @@ export default class SidebarRenderer {
       letterSpacing: '0.03em'
     });
     this.sidebar.appendChild(title);
+  }
+
+  /**
+   * Create the project section with Save/Load buttons
+   * @private
+   */
+  createProjectSection() {
+    // Header
+    const header = document.createElement('div');
+    header.textContent = 'Project';
+    Object.assign(header.style, {
+      font: 'bold 12px/1.2 sans-serif',
+      opacity: '0.85',
+      margin: '10px 0 6px'
+    });
+    this.sidebar.appendChild(header);
+
+    // Project name row
+    const nameRow = document.createElement('div');
+    Object.assign(nameRow.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      marginBottom: '8px',
+      padding: '4px 6px',
+      background: 'rgba(255,255,255,0.05)',
+      borderRadius: '4px'
+    });
+
+    // Project name display/input
+    const nameElement = document.createElement('div');
+    nameElement.id = 'project-name-display';
+    Object.assign(nameElement.style, {
+      flex: '1',
+      font: '13px sans-serif',
+      color: '#fff',
+      cursor: 'text',
+      padding: '2px 4px'
+    });
+    nameElement.textContent = 'Untitled';
+
+    // Edit icon button
+    const editIcon = document.createElement('button');
+    editIcon.innerHTML = '✏️';
+    editIcon.title = 'Edit project name';
+    Object.assign(editIcon.style, {
+      background: 'transparent',
+      border: 'none',
+      color: '#fff',
+      fontSize: '14px',
+      cursor: 'pointer',
+      padding: '2px 4px',
+      opacity: '0.6',
+      transition: 'opacity 150ms'
+    });
+
+    editIcon.addEventListener('mouseenter', () => {
+      editIcon.style.opacity = '1';
+    });
+    editIcon.addEventListener('mouseleave', () => {
+      editIcon.style.opacity = '0.6';
+    });
+    editIcon.addEventListener('click', () => {
+      this.editProjectName();
+    });
+
+    nameRow.appendChild(nameElement);
+    nameRow.appendChild(editIcon);
+    this.sidebar.appendChild(nameRow);
+
+    // Store reference for later updates
+    this.projectNameElement = nameElement;
+
+    // Button container
+    const buttonContainer = document.createElement('div');
+    Object.assign(buttonContainer.style, {
+      display: 'flex',
+      gap: '8px',
+      marginBottom: '12px'
+    });
+
+    // Save button
+    const saveButton = document.createElement('button');
+    saveButton.textContent = 'Save';
+    Object.assign(saveButton.style, {
+      flex: '1',
+      padding: '8px 12px',
+      font: '12px sans-serif',
+      background: '#1a4d2e',
+      color: '#fff',
+      border: '1px solid #2d7a4a',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      transition: 'background 150ms'
+    });
+    
+    saveButton.addEventListener('mouseenter', () => {
+      saveButton.style.background = '#2d7a4a';
+    });
+    saveButton.addEventListener('mouseleave', () => {
+      saveButton.style.background = '#1a4d2e';
+    });
+    saveButton.addEventListener('click', () => {
+      this.emit('save-project');
+    });
+
+    // Load button
+    const loadButton = document.createElement('button');
+    loadButton.textContent = 'Open';
+    Object.assign(loadButton.style, {
+      flex: '1',
+      padding: '8px 12px',
+      font: '12px sans-serif',
+      background: '#1a3d5c',
+      color: '#fff',
+      border: '1px solid #2d5a7f',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      transition: 'background 150ms'
+    });
+    
+    loadButton.addEventListener('mouseenter', () => {
+      loadButton.style.background = '#2d5a7f';
+    });
+    loadButton.addEventListener('mouseleave', () => {
+      loadButton.style.background = '#1a3d5c';
+    });
+    loadButton.addEventListener('click', () => {
+      this.emit('load-project');
+    });
+
+    buttonContainer.appendChild(saveButton);
+    buttonContainer.appendChild(loadButton);
+    this.sidebar.appendChild(buttonContainer);
   }
 
   /**
@@ -448,6 +584,90 @@ export default class SidebarRenderer {
   onChannelChange() {
     const channel = parseInt(this.channelSelect.value, 10) || 0;
     this.emit('channel-change', channel);
+  }
+
+  /**
+   * Edit project name inline
+   */
+  editProjectName() {
+    const nameElement = this.projectNameElement;
+    if (!nameElement) return;
+    
+    const currentName = nameElement.textContent;
+    
+    // Create input field
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentName;
+    Object.assign(input.style, {
+      font: '13px sans-serif',
+      background: '#222',
+      color: '#fff',
+      border: '1px solid #666',
+      borderRadius: '3px',
+      padding: '2px 4px',
+      width: '100%',
+      outline: 'none'
+    });
+    
+    // Replace display with input
+    nameElement.replaceWith(input);
+    input.focus();
+    input.select();
+    
+    // Handle save on Enter or blur
+    const saveHandler = () => {
+      const newName = input.value.trim() || 'Untitled';
+      
+      // Recreate display element
+      const newDisplay = document.createElement('div');
+      newDisplay.id = 'project-name-display';
+      Object.assign(newDisplay.style, {
+        flex: '1',
+        font: '13px sans-serif',
+        color: '#fff',
+        cursor: 'text',
+        padding: '2px 4px'
+      });
+      newDisplay.textContent = newName;
+      
+      input.replaceWith(newDisplay);
+      this.projectNameElement = newDisplay;
+      
+      // Emit event to update AppController
+      this.emit('project-name-changed', newName);
+    };
+    
+    input.addEventListener('blur', saveHandler);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        saveHandler();
+      } else if (e.key === 'Escape') {
+        // Cancel - restore original name
+        const newDisplay = document.createElement('div');
+        newDisplay.id = 'project-name-display';
+        Object.assign(newDisplay.style, {
+          flex: '1',
+          font: '13px sans-serif',
+          color: '#fff',
+          cursor: 'text',
+          padding: '2px 4px'
+        });
+        newDisplay.textContent = currentName;
+        input.replaceWith(newDisplay);
+        this.projectNameElement = newDisplay;
+      }
+    });
+  }
+
+  /**
+   * Update project name display
+   * @param {string} name - New project name
+   */
+  updateProjectName(name) {
+    if (this.projectNameElement) {
+      this.projectNameElement.textContent = name;
+    }
   }
 
   /**

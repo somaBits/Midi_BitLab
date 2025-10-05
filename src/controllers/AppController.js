@@ -7,6 +7,7 @@
 import MidiManager from '../models/MidiManager.js';
 import WaveformNode from '../models/WaveformNode.js';
 import GroupManager from '../models/GroupManager.js';
+import ProjectSerializer from '../models/ProjectSerializer.js';
 import CanvasManager from '../views/CanvasManager.js';
 import NodeRenderer from '../views/NodeRenderer.js';
 import SidebarRenderer from '../views/SidebarRenderer.js';
@@ -21,6 +22,8 @@ import {
   KEY_ESCAPE,
   KEY_ENTER,
   KEY_SPACE,
+  KEY_CONTROL,
+  KEY_COMMAND,
   GROUP_PLAYHEAD_COLOR,
   GROUP_PLAYHEAD_WEIGHT,
   GROUP_BORDER_COLOR,
@@ -34,6 +37,7 @@ export default class AppController {
     // Core systems
     this.midi = new MidiManager();
     this.groupManager = new GroupManager();
+    this.serializer = new ProjectSerializer();
     this.canvas = new CanvasManager();
     this.nodeRenderer = new NodeRenderer(this.canvas);
     this.sidebar = new SidebarRenderer();
@@ -47,6 +51,11 @@ export default class AppController {
     this.connections = [];
     this.deltaTime = 0;
     this.lastFrameTime = 0;
+    
+    // Project state
+    this.currentProjectName = 'Untitled';
+    this.hasUnsavedChanges = false;
+    this.autoSaveIntervalId = null;
     
     // Bind methods for P5.js
     this._onMidiReady = this._onMidiReady.bind(this);
@@ -193,7 +202,7 @@ export default class AppController {
       }
     }
     
-    // NEW: Handle Shift key press during drag (for dynamic grouping mode)
+    // Handle Shift key press during drag (for dynamic grouping mode)
     if (keyCode === 16) { // Shift key
       if (this.interaction && this.interaction.dragState.active) {
         console.log('🔵 GROUPING: Shift pressed during drag - entering grouping mode');
@@ -953,6 +962,25 @@ export default class AppController {
     document.addEventListener('sidebar-input-mode-change', this._onSidebarInputModeChange);
     document.addEventListener('sidebar-output-selection-change', this._onSidebarOutputSelectionChange);
     document.addEventListener('sidebar-channel-change', this._onSidebarChannelChange);
+    
+    // Save/Load button event listeners
+    document.addEventListener('sidebar-save-project', () => {
+      console.log('Sidebar: Save button clicked');
+      this.saveProject();
+    });
+    
+    document.addEventListener('sidebar-load-project', () => {
+      console.log('Sidebar: Load button clicked');
+      this.loadProject();
+    });
+    
+    // Project name change event listener
+    document.addEventListener('sidebar-project-name-changed', (event) => {
+      const newName = event.detail;
+      console.log('Project name changed to:', newName);
+      this.currentProjectName = newName;
+      this.hasUnsavedChanges = true;
+    });
   }
 
   /**
@@ -996,6 +1024,156 @@ export default class AppController {
     const channel = event.detail;
     this.midi.setChannel(channel);
     console.log('Sidebar: Channel changed to', channel + 1);
+  }
+
+  /**
+   * Save current project to JSON file
+   */
+  saveProject() {
+    try {
+      // Serialize current state
+      const projectData = this.serializer.serializeProject(
+        this.nodes,
+        this.connections,
+        this.groupManager,
+        this.currentProjectName
+      );
+      
+      // Convert to JSON string
+      const json = JSON.stringify(projectData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      // Trigger download
+      const filename = `${this.currentProjectName.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.json`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      
+      // Cleanup
+      URL.revokeObjectURL(url);
+      this.hasUnsavedChanges = false;
+      
+      console.log(`Project saved: ${filename}`);
+    } catch (err) {
+      console.error('Save failed:', err);
+      alert(`Failed to save project: ${err.message}`);
+    }
+  }
+
+  /**
+   * Load project from JSON file
+   */
+  loadProject() {
+    // Check for unsaved changes
+    if (this.hasUnsavedChanges) {
+      const save = confirm('You have unsaved changes. Save before loading?');
+      if (save) {
+        this.saveProject();
+        return; // User can try loading again after save
+      }
+    }
+    
+    // Create file input
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const jsonData = JSON.parse(event.target.result);
+          this._restoreProject(jsonData);
+        } catch (err) {
+          console.error('Load failed:', err);
+          alert(`Failed to load project: ${err.message}`);
+        }
+      };
+      
+      reader.onerror = () => {
+        alert('Failed to read file');
+      };
+      
+      reader.readAsText(file);
+    };
+    
+    input.click();
+  }
+
+  /**
+   * Restore project from deserialized data
+   * @param {object} jsonData - Project JSON data
+   * @private
+   */
+  _restoreProject(jsonData) {
+    console.log('Restoring project from JSON...');
+    
+    // Deserialize project data
+    const restored = this.serializer.deserializeProject(jsonData);
+    
+    // Clear current scene
+    this._clearProject();
+    
+    // Restore nodes
+    for (const node of restored.nodes) {
+      this.addNode(node);
+    }
+    
+    // Restore connections
+    for (const connection of restored.connections) {
+      this.addConnection(connection);
+    }
+    
+    // Restore groups (must happen after nodes are added)
+    restored.restoreGroups(this.groupManager);
+    
+    // Update project metadata
+    this.currentProjectName = restored.metadata.name || 'Untitled';
+    this.hasUnsavedChanges = false;
+    
+    // Update sidebar display
+    this.sidebar.updateProjectName(this.currentProjectName);
+    
+    console.log(`Project restored: ${this.currentProjectName}`);
+    console.log(`- ${restored.nodes.length} nodes`);
+    console.log(`- ${restored.connections.length} connections`);
+    console.log(`- ${this.groupManager.groups.length} groups`);
+  }
+
+  /**
+   * Clear all project data
+   * @private
+   */
+  _clearProject() {
+    console.log('Clearing project...');
+    
+    // Stop all playback
+    this.stopAllPlayback();
+    
+    // Remove all connections
+    this.connections = [];
+    
+    // Remove all nodes
+    while (this.nodes.length > 0) {
+      this.removeNode(this.nodes[0]);
+    }
+    
+    // Clear groups
+    this.groupManager.groups = [];
+    
+    // Reset project name
+    this.currentProjectName = 'Untitled';
+    this.hasUnsavedChanges = false;
+    
+    // Update sidebar display
+    this.sidebar.updateProjectName('Untitled');
+    
+    console.log('Project cleared');
   }
 
   /**

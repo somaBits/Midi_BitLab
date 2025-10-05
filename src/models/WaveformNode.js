@@ -383,7 +383,9 @@ export default class WaveformNode extends Node {
       samples: this.samples,
       cc: this.cc,
       sourceDeviceName: this.sourceDeviceName,
-      durationMs: this.durationMs
+      durationMs: this.durationMs,
+      vTriggers: this.vTriggers.map(t => t.toJSON()),
+      hTriggers: this.hTriggers.map(t => t.toJSON())
     };
   }
 
@@ -403,6 +405,15 @@ export default class WaveformNode extends Node {
     node.cc = data.cc || 1;
     node.sourceDeviceName = data.sourceDeviceName || '';
     node.createdAt = data.createdAt || Date.now();
+    
+    // Restore triggers if present
+    if (data.vTriggers && Array.isArray(data.vTriggers)) {
+      node.vTriggers = data.vTriggers.map(triggerData => VTrigger.fromJSON(triggerData, node));
+    }
+    
+    if (data.hTriggers && Array.isArray(data.hTriggers)) {
+      node.hTriggers = data.hTriggers.map(triggerData => HTrigger.fromJSON(triggerData, node));
+    }
     
     return node;
   }

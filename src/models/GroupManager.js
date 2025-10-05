@@ -388,6 +388,58 @@ export default class GroupManager extends EventEmitter {
   }
 
   /**
+   * Serialize groups to JSON
+   * @returns {array} Array of group data objects
+   */
+  toJSON() {
+    return this.groups.map(group => ({
+      memberIds: Array.from(group.members).map(node => node.id)
+    }));
+  }
+
+  /**
+   * Restore groups from JSON data
+   * @param {array} groupsData - Array of serialized group data
+   * @param {Map} nodeMap - Map of node ID to node instance
+   */
+  restoreFromJSON(groupsData, nodeMap) {
+    // Clear existing groups
+    this.groups = [];
+    
+    if (!groupsData || !Array.isArray(groupsData)) {
+      console.warn('GroupManager.restoreFromJSON: Invalid groups data');
+      return;
+    }
+    
+    // Recreate each group
+    for (const groupData of groupsData) {
+      if (!groupData.memberIds || !Array.isArray(groupData.memberIds)) {
+        console.warn('GroupManager.restoreFromJSON: Invalid group data', groupData);
+        continue;
+      }
+      
+      // Get node instances from IDs
+      const nodes = groupData.memberIds
+        .map(id => nodeMap.get(id))
+        .filter(node => node !== undefined);
+      
+      // Only create group if we have at least 2 valid nodes
+      if (nodes.length >= 2) {
+        // Use ensureGroupWith to create the group
+        const firstNode = nodes[0];
+        for (let i = 1; i < nodes.length; i++) {
+          this.ensureGroupWith(firstNode, nodes[i]);
+        }
+        console.log(`GroupManager: Restored group with ${nodes.length} nodes`);
+      } else {
+        console.warn(`GroupManager: Skipped group with ${nodes.length} valid nodes (need at least 2)`);
+      }
+    }
+    
+    console.log(`GroupManager: Restored ${this.groups.length} groups from JSON`);
+  }
+
+  /**
    * Clean up resources
    */
   destroy() {
