@@ -1,4 +1,7 @@
-# MIDI Visualizer
+![MIDI BitLab](https://github.com/user-attachments/assets/746f5a5d-259d-4c51-b570-f98522f8a001)
+
+
+# MIDI BitLab
 
 A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, and group playback.
 
