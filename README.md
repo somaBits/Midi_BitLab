@@ -1,6 +1,9 @@
-# MIDI Visualizer
+![MIDI BitLab](https://github.com/user-attachments/assets/746f5a5d-259d-4c51-b570-f98522f8a001)
 
-A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, group playback, and project persistence.
+
+# MIDI BitLab
+
+A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, group playback, and project persistence. Try it out here: [MIDI BitLab](somabits.github.io/Midi_BitLab/)
 
 ## Getting Started
 
@@ -93,15 +96,3 @@ A visual programming environment for MIDI Control Change messages with real-time
 - **Trigger sequencing**: Connect output ports to input ports → Chain playback across nodes
 - **Group playback from trigger**: Connect cable to VTrigger input → Group plays from that position
 - **Delete persistence**: Right-click node → Overlay stays until you release inside node or on delete icon
-
-## Technical Details
-
-Built with clean MVC architecture using P5.js for rendering, featuring:
-- Event-driven trigger propagation system
-- Real-time MIDI recording at 100 pixels/second
-- Group management with synchronized playback coordination
-- Universal port connection system with directional validation
-
----
-
-**Project Status**: 71% complete (15/21 planned components implemented)
