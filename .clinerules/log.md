@@ -825,6 +825,332 @@ const rightWidth = Math.max(2, this.w - leftWidth);
 - Group playback coordination
 - Advanced UI enhancements and polish
 
+### 2025-10-05 13:41:15 (Europe/Stockholm) - Save/Load System with UI Buttons COMPLETED
+
+#### 🎉 MAJOR FEATURE: Complete Project Serialization & Persistence System
+
+**Feature Overview:** Implemented a comprehensive save/load system for the MIDI Visualizer with visible UI buttons in the sidebar, enabling users to save entire project states to JSON files and restore them perfectly.
+
+#### Implementation Components
+
+**1. ProjectSerializer Model (`src/models/ProjectSerializer.js` - NEW FILE):**
+- **Complete Serialization System:**
+  - `serializeProject()` - Converts entire app state to JSON
+  - `deserializeProject()` - Reconstructs app state from JSON
+  - Handles nodes, connections, groups, and metadata
+- **Port ID System:**
+  - Auto-generates unique IDs for all trigger ports
+  - Maps ports by ID for connection reconstruction
+  - Supports both input/output ports on VTriggers
+  - Supports up/down ports on HTriggers
+- **Connection Serialization:**
+  - Stores port IDs instead of object references
+  - Reconstructs Connection objects with proper port linkage
+  - Maintains trigger propagation relationships
+- **Group Serialization:**
+  - Stores group membership by node IDs
+  - Reconstructs groups after nodes are loaded
+  - Uses `ensureGroupWith()` for proper group formation
+
+**2. Save/Load Buttons in Sidebar (SidebarRenderer.js):**
+- **Project Section UI:**
+  - Added "Project" header section
+  - Editable project name with edit icon (✏️)
+  - Save button (green theme)
+  - Load button (blue theme)
+- **Visual Design:**
+  - Project name row with semi-transparent background
+  - Inline editing with Enter/Escape keyboard support
+  - Hover effects on buttons and edit icon
+  - Consistent with sidebar aesthetic
+
+**3. AppController Integration:**
+- **Save/Load Methods:**
+  - `saveProject()` - Serializes and downloads JSON file
+  - `loadProject()` - Opens file dialog and restores project
+  - `_restoreProject()` - Deserializes and rebuilds scene
+  - `_clearProject()` - Cleans up current project state
+- **Project State Tracking:**
+  - `currentProjectName` - Tracks project name
+  - `hasUnsavedChanges` - Tracks modification state
+  - Updates sidebar display on load/clear
+- **Event Listeners:**
+  - `sidebar-save-project` - Save button clicked
+  - `sidebar-load-project` - Load button clicked
+  - `sidebar-project-name-changed` - Name edited
+
+**4. JSON File Format:**
+```json
+{
+  "version": "1.0",
+  "timestamp": 1696521600000,
+  "metadata": {
+    "name": "My Project",
+    "lastModified": 1696521600000
+  },
+  "nodes": [
+    {
+      "id": "node_timestamp_random",
+      "x": 120,
+      "y": 120,
+      "width": 200,
+      "label": "CC 10",
+      "cc": 10,
+      "sourceDeviceName": "MIDI Device",
+      "samples": [...],
+      "vTriggers": [...],
+      "hTriggers": [...]
+    }
+  ],
+  "connections": [
+    {
+      "id": "connection_timestamp_random",
+      "portAId": "port_id_1",
+      "portBId": "port_id_2"
+    }
+  ],
+  "groups": [
+    {
+      "memberIds": ["node_id_1", "node_id_2", "node_id_3"]
+    }
+  ]
+}
+```
+
+#### Technical Verification
+
+**Console Log Evidence:**
+- ✅ "Sidebar: Save button clicked"
+- ✅ "Project saved: ProjectName_1696521600000.json"
+- ✅ "Sidebar: Load button clicked"
+- ✅ "Restoring project from JSON..."
+- ✅ "Project restored: ProjectName"
+- ✅ "- X nodes"
+- ✅ "- Y connections"
+- ✅ "- Z groups"
+
+**Feature Testing:**
+- ✅ Save button downloads JSON file
+- ✅ Load button opens file dialog
+- ✅ Nodes restored with all properties
+- ✅ Triggers restored with correct positions
+- ✅ Connections restored and functional
+- ✅ Groups restored with proper membership
+- ✅ Trigger propagation works after load
+- ✅ Project name updates in sidebar
+- ✅ Unsaved changes warning before load
+
+#### MVC Compliance
+
+**Architecture Adherence:**
+- **Models:** ProjectSerializer contains all serialization logic
+- **Views:** SidebarRenderer provides UI only
+- **Controllers:** AppController coordinates save/load workflow
+- **Clean Separation:** No rendering in models, no logic in views
+
+#### Files Created/Modified
+- **NEW:** `src/models/ProjectSerializer.js` - Complete serialization system
+- **MODIFIED:** `src/views/SidebarRenderer.js` - Added Project section with buttons
+- **MODIFIED:** `src/controllers/AppController.js` - Save/load integration
+- **MODIFIED:** `src/config/constants.js` - Added KEY_CONTROL, KEY_COMMAND (later removed)
+
+#### User Workflow
+
+**Saving a Project:**
+1. Edit project name (click ✏️ icon)
+2. Click green **Save** button in sidebar
+3. JSON file downloads: `ProjectName_timestamp.json`
+4. Console confirms: "Project saved"
+
+**Loading a Project:**
+1. Click blue **Load** button in sidebar
+2. Select JSON file from file dialog
+3. Scene clears and rebuilds from file
+4. Console shows restoration progress
+5. Project name updates in sidebar
+
+#### Impact on Project Status
+- **Save/Load System:** Production-ready with complete state persistence
+- **User Experience:** Professional-grade project management
+- **Feature Parity:** Exceeds monolithic script (which had no save/load)
+- **Overall Completion:** Maintains 71% with major new capability
+
+### 2025-10-05 16:34:46 (Europe/Stockholm) - Project Name Editor with Edit Icon COMPLETED
+
+#### 🎨 FEATURE: Inline Project Name Editing with Visual Feedback
+
+**Feature Overview:** Enhanced the save/load system with an inline project name editor featuring an edit icon, allowing users to easily rename their projects directly in the sidebar.
+
+#### Implementation Components
+
+**1. Project Name Display Row (SidebarRenderer.js):**
+- **Visual Design:**
+  - Semi-transparent background (rgba(255,255,255,0.05))
+  - Project name displayed as text
+  - Edit icon (✏️) on right side
+  - Hover effect on icon (60% → 100% opacity)
+- **Positioned Between:**
+  - "Project" header (above)
+  - Save/Load buttons (below)
+
+**2. Inline Edit Mode:**
+- **Activation:** Click edit icon (✏️)
+- **Behavior:**
+  - Text becomes input field
+  - Dark background (#222), white text
+  - Auto-focus and select all text
+  - Enter key saves changes
+  - Escape key cancels editing
+  - Blur event also saves
+- **Visual Feedback:**
+  - Input field replaces text display
+  - Subtle border indicates edit mode
+  - Smooth transitions
+
+**3. Event-Driven Updates:**
+- **SidebarRenderer Methods:**
+  - `editProjectName()` - Switches to edit mode
+  - `updateProjectName(name)` - Updates display externally
+- **AppController Integration:**
+  - Listens for `sidebar-project-name-changed` event
+  - Updates `currentProjectName` state
+  - Marks `hasUnsavedChanges = true`
+  - Updates sidebar on load/clear operations
+
+**4. Project Name Persistence:**
+- **Included in JSON:**
+  - Stored in `metadata.name` field
+  - Restored when loading projects
+  - Used in save filename
+- **Automatic Sanitization:**
+  - Non-alphanumeric characters → underscores
+  - Example: `My Project!` → `My_Project_timestamp.json`
+
+#### Technical Implementation
+
+**Edit Mode Code:**
+```javascript
+editProjectName() {
+  const nameElement = this.projectNameElement;
+  const currentName = nameElement.textContent;
+  
+  // Create input field
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentName;
+  // ... styling ...
+  
+  nameElement.replaceWith(input);
+  input.focus();
+  input.select();
+  
+  // Save on Enter or blur
+  const saveHandler = () => {
+    const newName = input.value.trim() || 'Untitled';
+    // Recreate display element
+    // Emit project-name-changed event
+  };
+  
+  input.addEventListener('blur', saveHandler);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveHandler();
+    if (e.key === 'Escape') /* cancel and restore */
+  });
+}
+```
+
+**AppController Integration:**
+```javascript
+// Event listener
+document.addEventListener('sidebar-project-name-changed', (event) => {
+  const newName = event.detail;
+  this.currentProjectName = newName;
+  this.hasUnsavedChanges = true;
+});
+
+// Update on load
+_restoreProject(jsonData) {
+  // ... restore nodes/connections/groups ...
+  this.currentProjectName = restored.metadata.name || 'Untitled';
+  this.sidebar.updateProjectName(this.currentProjectName);
+}
+
+// Reset on clear
+_clearProject() {
+  // ... clear scene ...
+  this.currentProjectName = 'Untitled';
+  this.sidebar.updateProjectName('Untitled');
+}
+```
+
+#### Sidebar Layout
+
+```
+┌─────────────────────┐
+│  MIDI               │
+│                     │
+│  Project            │
+│  My Project     ✏️  │  ← EDITABLE NAME + ICON
+│  [Save]  [Load]     │
+│                     │
+│  Inputs             │
+│  ☐ All              │
+│  ...                │
+└─────────────────────┘
+```
+
+#### Verification Results
+
+**Console Log Evidence:**
+- ✅ "Project name changed to: New Name"
+- ✅ Console updates when editing completes
+- ✅ No errors during edit mode transitions
+
+**Feature Testing:**
+- ✅ Click edit icon → input appears
+- ✅ Text auto-selected for easy replacement
+- ✅ Enter key saves changes
+- ✅ Escape key cancels editing
+- ✅ Click away (blur) saves changes
+- ✅ Empty name defaults to "Untitled"
+- ✅ Name persists in saved JSON
+- ✅ Name restored on project load
+- ✅ Filename includes project name
+- ✅ Unsaved changes flag set on edit
+
+#### User Experience Benefits
+
+**Discoverable:**
+- Edit icon clearly indicates editability
+- Hover effect draws attention
+- Standard pencil icon universally understood
+
+**Intuitive:**
+- Inline editing matches modern UI patterns
+- Keyboard shortcuts (Enter/Escape) feel natural
+- Auto-select makes editing quick
+
+**Persistent:**
+- Name saved with project
+- Restored on load
+- Used in filenames
+- Tracks unsaved state
+
+#### Files Modified
+- `src/views/SidebarRenderer.js` - Added name display, edit mode, update method
+- `src/controllers/AppController.js` - Event listeners, load/clear updates
+
+#### Impact on Project Status
+- **Project Management:** Complete with editable names
+- **User Experience:** Professional-grade workflow
+- **Architecture:** Clean event-driven design
+- **Overall Completion:** Maintains 71% with enhanced UX
+
+#### Next Priorities
+- Multi-selection system for nodes and connections
+- Advanced UI enhancements and polish
+- Performance optimization for complex scenes
+
 ### 2025-10-04 22:04:00 (Europe/Stockholm) - Group Playback Refinements COMPLETED
 
 #### 🎨 FEATURE: Enhanced Group Playback Visualization & Behavior

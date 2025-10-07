@@ -1,6 +1,6 @@
 # MIDI Visualizer
 
-A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, and group playback.
+A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, group playback, and project persistence.
 
 ## Getting Started
 
@@ -38,6 +38,13 @@ A visual programming environment for MIDI Control Change messages with real-time
 - **Drag grouped node** → Entire group moves together
 - **Shift+drag grouped node** → Moves individually (auto-ungroups if >30px away)
 
+**6. Save & Load Projects**
+- **Open sidebar** → Click hamburger menu (☰) in top-left
+- **Edit project name** → Click pencil icon (✏️) next to name
+- **Click green Save button** → Downloads JSON file with timestamp
+- **Click blue Load button** → Opens file dialog to restore project
+- **All state preserved** → Nodes, triggers, connections, groups fully restored
+
 ## All Interactions
 
 ### Mouse Actions
@@ -58,6 +65,9 @@ A visual programming environment for MIDI Control Change messages with real-time
 | Right-click node | Show delete overlay |
 | Right-click trigger | Show delete icon |
 | Hold Shift while dragging | Group preview / individual movement |
+| Click sidebar Save button | Download project as JSON |
+| Click sidebar Load button | Open file dialog to restore project |
+| Click project name edit icon | Edit project name inline |
 
 ### Keyboard Shortcuts
 | Key | Action |
