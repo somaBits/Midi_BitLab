@@ -4,6 +4,7 @@
 # MIDI BitLab
 
 A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, and group playback.
+Try it out here: [MIDI BitLab](somabits.github.io/Midi_BitLab/)
 
 ## Getting Started
 
