@@ -940,8 +940,9 @@ export default class InteractionController {
    */
   _updateTriggerHover() {
     const mousePos = this.app.canvas.getMousePos();
-    const triggerHit = this._findTriggerAt(mousePos.x, mousePos.y, 8);
     
+    // Priority 1: Check triggers first (highest priority)
+    const triggerHit = this._findTriggerAt(mousePos.x, mousePos.y, 8);
     if (triggerHit) {
       this.triggerHover = {
         active: true,
@@ -955,19 +956,41 @@ export default class InteractionController {
       if (typeof window.cursor === 'function') {
         window.cursor(cursorType);
       }
-    } else {
-      this.triggerHover = {
-        active: false,
-        node: null,
-        trigger: null,
-        type: null
-      };
-      
-      // Reset cursor if not dragging and no other special state
-      if (!this.triggerDrag.active && !this.dragState.active) {
+      return; // Early exit - trigger cursor takes priority
+    }
+    
+    // Clear trigger hover state
+    this.triggerHover = {
+      active: false,
+      node: null,
+      trigger: null,
+      type: null
+    };
+    
+    // Priority 2: Check edge create areas (after triggers)
+    if (!this.triggerDrag.active && !this.dragState.active) {
+      const edgeHit = this._checkEdgeAreaHit(mousePos.x, mousePos.y);
+      if (edgeHit) {
+        // Over edge create area - use crosshair cursor
         if (typeof window.cursor === 'function') {
-          window.cursor('default');
+          window.cursor('crosshair');
         }
+        return;
+      }
+      
+      // Priority 3: Check node bodies (after edge areas)
+      const node = this.app.getNodeAt(mousePos.x, mousePos.y);
+      if (node) {
+        // Over node body - use grab cursor
+        if (typeof window.cursor === 'function') {
+          window.cursor('grab');
+        }
+        return;
+      }
+      
+      // Priority 4: Empty space - default cursor
+      if (typeof window.cursor === 'function') {
+        window.cursor('default');
       }
     }
   }
