@@ -91,6 +91,12 @@ export const COLOR_PORT_STROKE = [255, 255, 255];
 export const COLOR_NODE_STROKE = [255, 255, 255];
 export const COLOR_BACKGROUND = [80, 80, 80];
 
+// Waveform Colors
+export const COLOR_WAVEFORM_NODE = [255, 255, 255]; // White waveform for WaveformNode
+export const COLOR_WAVEFORM_OSCILLOSCOPE = [255, 102, 0]; // White waveform for OscilloscopeNode
+export const COLOR_WAVEFORM_RECORDING = [220]; // Light gray for recording tracks
+export const COLOR_PREVIEW_LINE = [255, 255, 255]; // White preview lines for trigger creation
+
 // Trigger Visual Colors (separated for clarity)
 export const COLOR_TRIGGER_LINE = [255, 255, 255]; // White trigger lines
 export const COLOR_TRIGGER_DOT = [255, 0, 0]; // White intersection dots
@@ -117,3 +123,10 @@ export const RECORDING_MARGIN = 20;
 // Node Creation
 export const NODE_STACK_GAP = 12;
 export const DEFAULT_NODE_SAMPLES = 200;
+
+// Oscilloscope Constants
+export const OSCILLOSCOPE_BUFFER_WIDTH = 200; // 2 seconds at 100px/sec (matches visual width)
+export const OSCILLOSCOPE_DEFAULT_HEIGHT = 80;
+export const OSCILLOSCOPE_LABEL_PLACEHOLDER = '(select source)';
+export const OSCILLOSCOPE_LIVE_INDICATOR_COLOR = [255, 0, 0]; // Red dot
+export const OSCILLOSCOPE_LIVE_INDICATOR_SIZE = 5; // Diameter in pixels

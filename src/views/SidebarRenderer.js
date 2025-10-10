@@ -9,6 +9,7 @@ export default class SidebarRenderer {
     // DOM elements
     this.sidebar = null;
     this.toggleButton = null;
+    this.oscilloscopeButton = null;
     this.inputList = null;
     this.outputList = null;
     this.channelSelect = null;
@@ -32,6 +33,7 @@ export default class SidebarRenderer {
    */
   init() {
     this.createToggleButton();
+    this.createOscilloscopeButton();
     this.createSidebar();
     this.setCollapsed(true); // Start expanded
   }
@@ -61,6 +63,46 @@ export default class SidebarRenderer {
     this.toggleButton.textContent = '☰';
     this.toggleButton.addEventListener('click', this.onToggleClick);
     document.body.appendChild(this.toggleButton);
+  }
+
+  /**
+   * Create the Add Oscilloscope button
+   * @private
+   */
+  createOscilloscopeButton() {
+    this.oscilloscopeButton = document.createElement('button');
+    Object.assign(this.oscilloscopeButton.style, {
+      position: 'fixed',
+      left: '50px',
+      top: '8px',
+      zIndex: '100',
+      padding: '6px 12px',
+      borderRadius: '6px',
+      border: '1px solid #666',
+      background: '#111',
+      color: '#fff',
+      font: '12px/1 sans-serif',
+      cursor: 'pointer',
+      transition: 'background 160ms ease-out',
+      whiteSpace: 'nowrap'
+    });
+    
+    this.oscilloscopeButton.textContent = 'Add Oscilloscope';
+    
+    // Hover effect
+    this.oscilloscopeButton.addEventListener('mouseenter', () => {
+      this.oscilloscopeButton.style.background = '#222';
+    });
+    this.oscilloscopeButton.addEventListener('mouseleave', () => {
+      this.oscilloscopeButton.style.background = '#111';
+    });
+    
+    // Click handler - emit event
+    this.oscilloscopeButton.addEventListener('click', () => {
+      this.emit('create-oscilloscope');
+    });
+    
+    document.body.appendChild(this.oscilloscopeButton);
   }
 
   /**
@@ -690,6 +732,11 @@ export default class SidebarRenderer {
       this.toggleButton.removeEventListener('click', this.onToggleClick);
       document.body.removeChild(this.toggleButton);
       this.toggleButton = null;
+    }
+
+    if (this.oscilloscopeButton) {
+      document.body.removeChild(this.oscilloscopeButton);
+      this.oscilloscopeButton = null;
     }
 
     if (this.sidebar) {

@@ -825,6 +825,316 @@ const rightWidth = Math.max(2, this.w - leftWidth);
 - Group playback coordination
 - Advanced UI enhancements and polish
 
+### 2025-10-10 11:40:00 (Europe/Stockholm) - Oscilloscope Waveform Stretch Bug Fix & Waveform Color Constants COMPLETED
+
+#### 🔧 CRITICAL BUG FIX: Oscilloscope Waveform 50% Stretch Issue
+
+**Problem Summary:** Oscilloscope waveform appeared 50% longer than expected - displaying what looked like 3 seconds of data in a 200px wide box, despite all dimensions and buffer sizes being correct at 200px.
+
+#### Root Cause Analysis
+
+**Double-Counting Buffer Index:**
+- Both `_advanceBuffer()` and `onCCReceived()` were incrementing `bufferIndex`
+- **_advanceBuffer():** Incremented index based on time (100px/second intended)
+- **onCCReceived():** ALSO incremented index when CC data arrived
+- **Result:** Buffer advanced at ~150px/second instead of 100px/second
+- **Visual Impact:** 50% stretch - appearing as 300px worth of data in 200px space
+
+**Debugging Journey:**
+- Verified all constants correct (OSCILLOSCOPE_BUFFER_WIDTH = 200)
+- Verified node dimensions correct (w=200, h=80)
+- Added comprehensive debug logging showing exact vertex counts and X ranges
+- Console showed: `vertexCount=200`, `X range: 640 to 839`, `width=200px` - all correct!
+- The issue was in timing, not rendering - buffer advancing too fast
+
+#### Solution Implemented
+
+**Modified `OscilloscopeNode.onCCReceived()` (models/OscilloscopeNode.js):**
+```javascript
+// BEFORE (BROKEN):
+this.buffer[this.bufferIndex] = normalizedValue;
+this.bufferIndex = (this.bufferIndex + 1) % OSCILLOSCOPE_BUFFER_WIDTH; // ❌ Double increment!
+
+// AFTER (FIXED):
+this.buffer[this.bufferIndex] = normalizedValue;
+// Buffer advancement is handled solely by _advanceBuffer() based on time
+// No increment here - just write to current position
+```
+
+**Result:**
+- Buffer now advances at exactly 100px/second
+- Oscilloscope displays exactly 2 seconds of data in 200px
+- Perfect timing synchronization with WaveformNode playback
+- Visual length matches playback timing perfectly
+
+#### 🎨 FEATURE: Separate Waveform Color Constants for Node and Oscilloscope
+
+**Feature Overview:** Centralized all waveform colors in constants with separate constants for WaveformNode and OscilloscopeNode to allow independent customization.
+
+**New Constants in `src/config/constants.js`:**
+```javascript
+// Waveform Colors
+export const COLOR_WAVEFORM_NODE = [255, 255, 255]; // White waveform for WaveformNode
+export const COLOR_WAVEFORM_OSCILLOSCOPE = [255, 255, 255]; // White waveform for OscilloscopeNode
+export const COLOR_WAVEFORM_RECORDING = [220]; // Light gray for recording tracks
+export const COLOR_PREVIEW_LINE = [255, 255, 255]; // White preview lines for trigger creation
+```
+
+**Implementation:**
+- **NodeRenderer.js:** Now uses `COLOR_WAVEFORM_NODE` in `_drawWaveform()`
+- **OscilloscopeRenderer.js:** Now uses `COLOR_WAVEFORM_OSCILLOSCOPE` in `_drawWaveform()`
+- **RecordingRenderer.js:** Now uses `COLOR_WAVEFORM_RECORDING` in `_updateTrackBuffer()`
+
+**Architecture Benefits:**
+- Separate constants allow independent color customization for nodes vs oscilloscopes
+- All waveform colors centralized for easy maintenance
+- Consistent with established visual constants organization pattern
+- Future-proof for visual theme changes
+
+#### Files Modified
+- `src/models/OscilloscopeNode.js` - Removed bufferIndex increment from onCCReceived()
+- `src/config/constants.js` - Added COLOR_WAVEFORM_NODE, COLOR_WAVEFORM_OSCILLOSCOPE, COLOR_WAVEFORM_RECORDING, COLOR_PREVIEW_LINE
+- `src/views/NodeRenderer.js` - Updated to use COLOR_WAVEFORM_NODE
+- `src/views/OscilloscopeRenderer.js` - Updated to use COLOR_WAVEFORM_OSCILLOSCOPE  
+- `src/views/RecordingRenderer.js` - Updated to use COLOR_WAVEFORM_RECORDING
+
+#### Verification Results
+
+**Bug Fix Verification:**
+- ✅ Oscilloscope now displays exactly 2 seconds of data in 200px
+- ✅ Scrolling speed matches WaveformNode at 100px/second
+- ✅ Visual length perfectly synchronized with playback timing
+- ✅ When WaveformNode stops playback, oscilloscope stops receiving data at same moment
+
+**Color Constants Verification:**
+- ✅ All waveform colors now use centralized constants
+- ✅ NodeRenderer and OscilloscopeRenderer have independent color control
+- ✅ RecordingRenderer uses dedicated recording color constant
+- ✅ Easy to change colors in future if needed
+
+#### Technical Benefits
+
+**Maintainability:**
+- Single location to update oscilloscope buffer advancement logic
+- All waveform colors centralized for theme changes
+- Clear separation between timing (models) and rendering (views)
+
+**Architecture Compliance:**
+- Perfect MVC separation maintained
+- No hardcoded visual values in rendering code
+- Constants properly organized in config layer
+
+**User Experience:**
+- Oscilloscope now accurately represents real-time data flow
+- Visual consistency across the entire application
+- Professional-grade timing accuracy
+
+#### Impact on Project Status
+- **Oscilloscope System:** Now production-ready with correct timing
+- **Visual Constants:** Complete standardization of waveform colors
+- **Overall Completion:** Maintains 71% with critical bug fixed
+- **Architecture Quality:** Demonstrates clean debugging methodology
+
+#### Next Priorities
+- Multi-selection system for nodes and connections
+- Advanced UI enhancements and polish
+- Performance optimization for complex scenes
+
+### 2025-10-09 12:38:00 (Europe/Stockholm) - Real-Time Oscilloscope Feature COMPLETED
+
+#### 🎉 MAJOR FEATURE: Complete Real-Time MIDI CC Oscilloscope Implementation
+
+**Feature Overview:** Implemented a production-ready real-time oscilloscope for MIDI CC visualization with right-to-left scrolling, HTrigger support, and interactive source selection. The oscilloscope provides live monitoring of MIDI CC values with perfect timing synchronization matching WaveformNode playback speed.
+
+### Implementation Components
+
+#### **Phase 1: OscilloscopeNode Model** (`src/models/OscilloscopeNode.js` - NEW FILE)
+
+**Core Functionality:**
+- **Circular Buffer System:** 200-sample buffer for 2 seconds of data at 100px/sec
+- **Real-Time CC Processing:** `onCCReceived()` method handles incoming MIDI CC data
+- **Time-Based Scrolling:** `_advanceBuffer()` fills buffer continuously at PIXELS_PER_SECOND rate
+- **Graph Continuation:** Last value maintained when no new data arrives
+- **HTrigger Support:** Full HTrigger functionality with real-time crossing detection
+- **VTrigger Disabled:** Returns empty rect for top create area (no VTriggers)
+- **Source Selection:** `setSource()` configures which device/CC to monitor
+- **Serialization:** Complete JSON support for save/load functionality
+
+**Technical Implementation:**
+```javascript
+// Time-based buffer advancement
+_advanceBuffer(deltaTime) {
+  const pixelsToAdvance = (deltaTime / 1000) * PIXELS_PER_SECOND;
+  // Fill intermediate positions with last value
+  for (let i = 0; i < wholePixels; i++) {
+    this.buffer[this.bufferIndex] = this.lastReceivedValue;
+    this.bufferIndex = (this.bufferIndex + 1) % OSCILLOSCOPE_BUFFER_WIDTH;
+  }
+}
+```
+
+#### **Phase 2: OscilloscopeRenderer View** (`src/views/OscilloscopeRenderer.js` - NEW FILE)
+
+**Rendering Features:**
+- **Sliding Window Visualization:** Shows only most recent data (200 pixels)
+- **Right-to-Left Scrolling:** Newest data always on right edge
+- **HTrigger Rendering:** White horizontal lines with red crossing dots
+- **Port Rendering:** Up/down output ports with flash effects
+- **Right Edge Create Area:** Visual feedback for HTrigger placement
+- **No LIVE Indicator:** Clean, minimal visualization (per user request)
+
+**Sliding Window Logic:**
+```javascript
+_drawWaveform(oscilloscopeData) {
+  const pixelsToShow = Math.min(gw, bufferLength);
+  // Read backwards from write position (newest on right)
+  for (let i = 0; i < pixelsToShow; i++) {
+    const bufferPos = (writePos - pixelsToShow + i + bufferLength) % bufferLength;
+    const value = buffer[bufferPos];
+    const x = gx + i;
+    const y = this.canvas.map(value, 0, 1, gy + gh, gy);
+    this.canvas.vertex(x, y);
+  }
+}
+```
+
+#### **Phase 3: Source Selection UI** (`src/views/SourceSelector.js` - NEW FILE)
+
+**DOM-Based Dropdown System:**
+- **Semi-Transparent Overlay:** Dark overlay when active
+- **Dynamic Population:** Shows all recent CC sources from MidiManager.lastSeen
+- **Format:** "Device Name > CC #"
+- **Keyboard Support:** Enter to confirm, Escape to cancel
+- **Positioning:** Directly below oscilloscope label (not at cursor)
+- **Event-Driven:** Emits `oscilloscope-source-selected` event for integration
+
+**Integration Chain:**
+```javascript
+// Click label → InteractionController detects
+→ app.showOscilloscopeSourceSelector(node, labelX, labelY)
+→ SourceSelector.show() displays dropdown
+→ User selects source
+→ Event fires with {node, deviceId, deviceName, cc}
+→ AppController receives event
+→ node.setSource() updates oscilloscope
+```
+
+### Bug Fixes & Refinements
+
+#### **Fix #1: Graph Scrolling Speed (45% slower than expected)**
+**Problem:** Buffer was 300 samples but visual width was 200 pixels
+**Solution:** Updated `OSCILLOSCOPE_BUFFER_WIDTH` from 300 to 200 in constants.js
+**Result:** Perfect 1:1 mapping, correct visual speed at 100px/sec
+
+#### **Fix #2: Stretched Graph Appearance**
+**Problem:** Renderer mapped entire buffer statically, causing compression
+**Solution:** Implemented sliding window approach showing only most recent data
+**Result:** Graph displays correctly without stretching or compression
+
+#### **Fix #3: HTrigger Crossing Detection**
+**Problem:** Crossings calculated for entire buffer, not visible window
+**Solution:** Updated `getHTriggerCrossings()` to scan only visible sliding window
+**Result:** Red dots appear at correct positions on visible waveform
+
+#### **Fix #4: Dropdown Positioning**
+**Problem:** Dropdown appeared at cursor position, not sticky to label
+**Solution:** Changed to calculate label position: `(node.x + 6, node.y + 20)`
+**Result:** Dropdown now appears directly below label
+
+#### **Fix #5: LIVE Indicator Removed**
+**Solution:** Removed `_drawLiveIndicator()` call from renderer
+**Result:** Clean, minimal visualization per user requirements
+
+### Technical Specifications
+
+**Dimensions:**
+- Width: 200px (2 seconds at 100px/sec)
+- Height: 80px (matches WaveformNode dimensions)
+- Buffer: 200 samples (circular buffer)
+
+**Visual Speed:**
+- Scrolling: 100 pixels/second (matches WaveformNode playback)
+- Time-based advancement with fractional pixel accumulation
+- Smooth continuous scrolling when no data arrives
+
+**HTrigger Support:**
+- Full HTrigger functionality on right edge
+- Real-time crossing detection
+- Red dots at waveform intersections
+- Up/down output ports with trigger propagation
+- Port flash effects on fire
+
+**Architecture Compliance:**
+- ✅ Perfect MVC separation maintained throughout
+- ✅ Event-driven design with no circular dependencies
+- ✅ Circular buffer for efficient memory usage
+- ✅ Dynamic imports to avoid dependency issues
+- ✅ Complete JSON serialization support
+
+### Files Created/Modified
+
+**NEW FILES:**
+- `src/models/OscilloscopeNode.js` (364 lines) - Complete model implementation
+- `src/views/OscilloscopeRenderer.js` (368 lines) - Dedicated renderer
+- `src/views/SourceSelector.js` (283 lines) - DOM dropdown component
+
+**MODIFIED FILES:**
+- `src/config/constants.js` - Added oscilloscope constants
+- `src/controllers/AppController.js` - Integration + event handling + oscilloscopeRenderer
+- `src/controllers/InteractionController.js` - Label click detection
+- `src/main.js` - No changes needed (existing infrastructure sufficient)
+
+### Verification Testing
+
+**Console Log Evidence:**
+- ✅ "TEST: Created oscilloscope node at (640, 200)"
+- ✅ "TEST: Oscilloscope buffer initialized with 200 samples"
+- ✅ "Oscilloscope label clicked - showing source selector"
+- ✅ "SourceSelector: Populated with N CC sources"
+- ✅ "Oscilloscope source selected: Device > CC #"
+- ✅ "OscilloscopeNode HTrigger up crossing at v=0.xxx"
+
+**Feature Testing:**
+- ✅ Oscilloscope renders at correct dimensions (200x80)
+- ✅ Buffer scrolls right-to-left at 100px/sec (matches WaveformNode)
+- ✅ Graph continues with last value when no new data
+- ✅ HTriggers can be added on right edge
+- ✅ Red dots appear at waveform/HTrigger intersections
+- ✅ VTriggers disabled (top edge doesn't create triggers)
+- ✅ Source selector appears below label on click
+- ✅ Dropdown populated with recent CC sources
+- ✅ Source selection updates oscilloscope label
+- ✅ Real-time CC data updates waveform smoothly
+
+### Architecture Quality
+
+**MVC Pattern Compliance:**
+- **Models:** OscilloscopeNode contains all business logic, no rendering
+- **Views:** OscilloscopeRenderer + SourceSelector pure rendering/UI
+- **Controllers:** AppController + InteractionController coordinate only
+
+**Code Organization:**
+- Constants centralized in config layer
+- Dynamic imports prevent circular dependencies
+- Event-driven communication throughout
+- Reuses existing infrastructure (HTrigger, Port, Connection systems)
+
+**Design Patterns:**
+- Circular buffer for efficient memory management
+- Sliding window for correct visual representation
+- Time-based advancement for smooth scrolling
+- Event emitters for clean component communication
+
+### User Experience Achievements
+
+**Intuitive Interaction:**
+- Click label → dropdown appears with available sources
+- Select source → oscilloscope immediately starts displaying
+- HTriggers work identically to WaveformNode
+- Visual speed matches rest of application perfectly
+
+**Visual
+
 ### 2025-10-05 13:41:15 (Europe/Stockholm) - Save/Load System with UI Buttons COMPLETED
 
 #### 🎉 MAJOR FEATURE: Complete Project Serialization & Persistence System

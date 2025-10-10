@@ -12,6 +12,8 @@ import {
   COLOR_TRIGGER_PORT,
   COLOR_TRIGGER_CONNECTOR,
   COLOR_BACKGROUND,
+  COLOR_WAVEFORM_NODE,
+  COLOR_PREVIEW_LINE,
   TRIGGER_LINE_WEIGHT,
   TRIGGER_PORT_WEIGHT,
   TRIGGER_PORT_DIAMETER,
@@ -114,7 +116,7 @@ export default class NodeRenderer {
     
     const { gx, gy, gw, gh } = nodeData.getGraphRect();
     
-    this.canvas.stroke(255);
+    this.canvas.stroke(...COLOR_WAVEFORM_NODE);
     this.canvas.strokeWeight(1);
     this.canvas.noFill();
     

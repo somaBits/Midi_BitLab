@@ -233,14 +233,40 @@ export default class InteractionController {
     console.log('Checking for node hit...');
     const node = this.app.getNodeAt(mouseX, mouseY);
     if (node) {
-      // Check if Alt is held - duplicate instead of dragging original
-      if (this.altPressed) {
-        console.log('Alt+node hit found - duplicating and dragging');
-        this._duplicateAndDragNode(node, mouseX, mouseY);
-      } else {
-        console.log('Node hit found - starting node drag');
-        this._startNodeDrag(node, mouseX, mouseY);
-      }
+      // Import OscilloscopeNode dynamically to check instance type
+      import('../models/OscilloscopeNode.js').then(({ default: OscilloscopeNode }) => {
+        // Check if this is an oscilloscope node - show source selector on click
+        if (node instanceof OscilloscopeNode) {
+          // Check if click is in label area (top ~20px of node)
+          const labelHeight = 20;
+          if (mouseY >= node.y && mouseY <= node.y + labelHeight) {
+            console.log('Oscilloscope label clicked - showing source selector');
+            // Position dropdown below label (not at cursor)
+            const dropdownX = node.x + 6; // Align with label text
+            const dropdownY = node.y + 20; // Just below label
+            this.app.showOscilloscopeSourceSelector(node, dropdownX, dropdownY);
+            return;
+          }
+        }
+        
+        // Not an oscilloscope label click - proceed with normal node interaction
+        // Check if Alt is held - duplicate instead of dragging original
+        if (this.altPressed) {
+          console.log('Alt+node hit found - duplicating and dragging');
+          this._duplicateAndDragNode(node, mouseX, mouseY);
+        } else {
+          console.log('Node hit found - starting node drag');
+          this._startNodeDrag(node, mouseX, mouseY);
+        }
+      }).catch(error => {
+        console.error('Failed to import OscilloscopeNode:', error);
+        // Fallback to normal node interaction
+        if (this.altPressed) {
+          this._duplicateAndDragNode(node, mouseX, mouseY);
+        } else {
+          this._startNodeDrag(node, mouseX, mouseY);
+        }
+      });
       return;
     }
 
@@ -809,8 +835,6 @@ export default class InteractionController {
    * @private
    */
   _checkEdgeAreaHit(mouseX, mouseY) {
-    console.log(`Checking edge areas at (${mouseX}, ${mouseY})`);
-    
     // Check all nodes in reverse order (front to back)
     for (let i = this.app.nodes.length - 1; i >= 0; i--) {
       const node = this.app.nodes[i];
@@ -823,9 +847,7 @@ export default class InteractionController {
 
       // Check top edge area (for VTriggers)
       const topRect = node.getTopCreateRect();
-      console.log(`Node ${node.label} top rect:`, topRect);
       if (pointInRect(mouseX, mouseY, topRect.x, topRect.y, topRect.w, topRect.h)) {
-        console.log(`Hit top edge area of ${node.label}!`);
         return {
           node: node,
           area: 'top'
@@ -834,9 +856,7 @@ export default class InteractionController {
 
       // Check right edge area (for HTriggers)  
       const rightRect = node.getRightCreateRect();
-      console.log(`Node ${node.label} right rect:`, rightRect);
       if (pointInRect(mouseX, mouseY, rightRect.x, rightRect.y, rightRect.w, rightRect.h)) {
-        console.log(`Hit right edge area of ${node.label}!`);
         return {
           node: node,
           area: 'right'
@@ -844,7 +864,6 @@ export default class InteractionController {
       }
     }
     
-    console.log('No edge area hit found');
     return null;
   }
 

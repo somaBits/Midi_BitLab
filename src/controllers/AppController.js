@@ -6,11 +6,14 @@
 
 import MidiManager from '../models/MidiManager.js';
 import WaveformNode from '../models/WaveformNode.js';
+import OscilloscopeNode from '../models/OscilloscopeNode.js';
 import GroupManager from '../models/GroupManager.js';
 import ProjectSerializer from '../models/ProjectSerializer.js';
 import CanvasManager from '../views/CanvasManager.js';
 import NodeRenderer from '../views/NodeRenderer.js';
+import OscilloscopeRenderer from '../views/OscilloscopeRenderer.js';
 import SidebarRenderer from '../views/SidebarRenderer.js';
+import SourceSelector from '../views/SourceSelector.js';
 import InteractionController from './InteractionController.js';
 import RecordingManager from '../models/RecordingManager.js';
 import RecordingRenderer from '../views/RecordingRenderer.js';
@@ -40,7 +43,9 @@ export default class AppController {
     this.serializer = new ProjectSerializer();
     this.canvas = new CanvasManager();
     this.nodeRenderer = new NodeRenderer(this.canvas);
+    this.oscilloscopeRenderer = new OscilloscopeRenderer(this.canvas);
     this.sidebar = new SidebarRenderer();
+    this.sourceSelector = new SourceSelector();
     this.interaction = new InteractionController(this);
     this.recording = new RecordingManager();
     this.recordingRenderer = new RecordingRenderer(this.canvas);
@@ -61,6 +66,7 @@ export default class AppController {
     this._onMidiReady = this._onMidiReady.bind(this);
     this._onMidiError = this._onMidiError.bind(this);
     this._onMidiCC = this._onMidiCC.bind(this);
+    this._onMidiDevicesChanged = this._onMidiDevicesChanged.bind(this);
     
     // Bind recording event handlers
     this._onRecordingCommitted = this._onRecordingCommitted.bind(this);
@@ -318,7 +324,13 @@ export default class AppController {
     
     for (const node of this.nodes) {
       const nodeState = interactionState[node.id] || {};
-      this.nodeRenderer.draw(node, nodeState);
+      
+      // Use appropriate renderer based on node type
+      if (node instanceof OscilloscopeNode) {
+        this.oscilloscopeRenderer.draw(node, nodeState);
+      } else {
+        this.nodeRenderer.draw(node, nodeState);
+      }
     }
   }
 
@@ -653,6 +665,15 @@ export default class AppController {
     this.addNode(node2);
     this.addNode(node3);
     
+    // TEMPORARY TEST: Create oscilloscope node
+    const oscNode = new OscilloscopeNode(640, 200);
+    this.addNode(oscNode);
+    
+    // Set test source (will start receiving CC 1 data when available)
+    // oscNode.setSource('test-device-id', 'Test Device', 1);
+    console.log('TEST: Created oscilloscope node at (640, 200)');
+    console.log('TEST: Oscilloscope buffer initialized with', oscNode.buffer.length, 'samples');
+    console.log('TEST: Oscilloscope label:', oscNode.label);
   }
 
   /**
@@ -680,6 +701,26 @@ export default class AppController {
         data.source
       );
     }
+    
+    // Forward CC data to all oscilloscope nodes
+    for (const node of this.nodes) {
+      if (node instanceof OscilloscopeNode) {
+        node.onCCReceived(data);
+      }
+    }
+  }
+
+  /**
+   * Handle MIDI devices changed event
+   * @private
+   */
+  _onMidiDevicesChanged(data) {
+    // Update sidebar with new device lists
+    this.sidebar.updateInputDevices(data.inputs, this.midi.inputMode);
+    this.sidebar.updateOutputDevices(data.outputs, this.midi.outputSelection);
+    this.sidebar.updateChannel(this.midi.channel);
+    
+    console.log(`MIDI devices updated: ${data.inputs.length} inputs, ${data.outputs.length} outputs`);
   }
 
   /**
@@ -942,6 +983,22 @@ export default class AppController {
   }
 
   /**
+   * Show source selector for oscilloscope node
+   * @param {object} node - Oscilloscope node to configure
+   * @param {number} x - Screen X position for dropdown
+   * @param {number} y - Screen Y position for dropdown
+   */
+  showOscilloscopeSourceSelector(node, x, y) {
+    if (!(node instanceof OscilloscopeNode)) {
+      console.warn('showOscilloscopeSourceSelector called on non-oscilloscope node');
+      return;
+    }
+    
+    this.sourceSelector.show(node, x, y, this.midi);
+    console.log(`Showing source selector for oscilloscope at (${x}, ${y})`);
+  }
+
+  /**
    * Get application state for debugging
    */
   getDebugState() {
@@ -981,19 +1038,59 @@ export default class AppController {
       this.currentProjectName = newName;
       this.hasUnsavedChanges = true;
     });
+    
+    // Oscilloscope source selection event listener
+    document.addEventListener('oscilloscope-source-selected', (event) => {
+      const { node, deviceId, deviceName, cc } = event.detail;
+      console.log(`Oscilloscope source selected: ${deviceName} > CC ${cc}`);
+      node.setSource(deviceId, deviceName, cc);
+      this.hasUnsavedChanges = true;
+    });
+    
+    // Oscilloscope creation button event listener
+    document.addEventListener('sidebar-create-oscilloscope', () => {
+      console.log('Sidebar: Create Oscilloscope button clicked');
+      this.createOscilloscope();
+    });
   }
 
   /**
-   * Handle MIDI devices changed event
-   * @private
+   * Create a new oscilloscope node with cascade positioning
    */
-  _onMidiDevicesChanged(data) {
-    // Update sidebar with new device lists
-    this.sidebar.updateInputDevices(data.inputs, this.midi.inputMode);
-    this.sidebar.updateOutputDevices(data.outputs, this.midi.outputSelection);
-    this.sidebar.updateChannel(this.midi.channel);
+  createOscilloscope() {
+    // Find last oscilloscope for cascade positioning
+    const oscilloscopes = this.nodes.filter(n => n instanceof OscilloscopeNode);
+    let x, y;
     
-    console.log(`MIDI devices updated: ${data.inputs.length} inputs, ${data.outputs.length} outputs`);
+    if (oscilloscopes.length > 0) {
+      // Cascade from last oscilloscope (+12, +12 offset)
+      const lastScope = oscilloscopes[oscilloscopes.length - 1];
+      x = lastScope.x + 12;
+      y = lastScope.y + 12;
+    } else {
+      // First oscilloscope - default position
+      x = 640;
+      y = 200;
+    }
+    
+    // Create and add the oscilloscope
+    const oscilloscope = new OscilloscopeNode(x, y);
+    this.addNode(oscilloscope);
+    
+    console.log(`Created oscilloscope at (${x}, ${y})`);
+  }
+
+  /**
+   * Get application state for debugging
+   */
+  getDebugState() {
+    return {
+      nodes: this.nodes.length,
+      connections: this.connections.length,
+      midi: this.midi.getState(),
+      interaction: this.interaction.getState(),
+      deltaTime: this.deltaTime.toFixed(2)
+    };
   }
 
   /**

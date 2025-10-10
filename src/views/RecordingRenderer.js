@@ -4,7 +4,7 @@
  * No business logic
  */
 
-import { COLOR_PLAYHEAD } from '../config/constants.js';
+import { COLOR_PLAYHEAD, COLOR_WAVEFORM_RECORDING } from '../config/constants.js';
 
 export default class RecordingRenderer {
   constructor(canvasManager) {
@@ -159,7 +159,7 @@ export default class RecordingRenderer {
 
     // Draw horizontal line segments as position advances
     if (targetX > state.writeX) {
-      buffer.stroke(220); // Light gray waveform
+      buffer.stroke(...COLOR_WAVEFORM_RECORDING); // Light gray waveform
       buffer.strokeWeight(1.5);
       buffer.noFill();
 
