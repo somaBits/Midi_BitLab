@@ -644,6 +644,11 @@ export default class AppController {
       this.canvas.noStroke();
       this.canvas.fill(...DELETE_OVERLAY_COLOR);
       this.canvas.rect(target.x, target.y, target.w, target.h);
+      
+      // Draw color picker overlay on left edge (for OscilloscopeNodes only)
+      if (target instanceof OscilloscopeNode) {
+        this.nodeRenderer.drawColorPickerOverlay(target);
+      }
     }
     // Triggers and connections get no background (as specified)
     

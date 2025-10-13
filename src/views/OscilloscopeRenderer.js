@@ -121,7 +121,9 @@ export default class OscilloscopeRenderer {
     // Only show the most recent 'gw' pixels worth of data (sliding window)
     const pixelsToShow = Math.min(gw, bufferLength);
     
-    this.canvas.stroke(...COLOR_WAVEFORM_OSCILLOSCOPE);
+    // Use custom node color if available, otherwise fallback to constant
+    const color = oscilloscopeData.getWaveformColor ? oscilloscopeData.getWaveformColor() : COLOR_WAVEFORM_OSCILLOSCOPE;
+    this.canvas.stroke(...color);
     this.canvas.strokeWeight(1);
     this.canvas.noFill();
     

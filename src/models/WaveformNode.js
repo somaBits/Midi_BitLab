@@ -8,7 +8,7 @@ import Node from './Node.js';
 import VTrigger from './VTrigger.js';
 import HTrigger from './HTrigger.js';
 import { generateSine, generateSawtooth, generateRandomSmooth } from './WaveformGenerator.js';
-import { PIXELS_PER_SECOND, CC_MAX_VALUE, DEFAULT_NODE_SAMPLES, CREATE_AREA_TOP_HEIGHT, CREATE_AREA_RIGHT_WIDTH } from '../config/constants.js';
+import { PIXELS_PER_SECOND, CC_MAX_VALUE, DEFAULT_NODE_SAMPLES, CREATE_AREA_TOP_HEIGHT, CREATE_AREA_RIGHT_WIDTH, COLOR_PICKER_DEFAULT_HUE } from '../config/constants.js';
 import { clamp, map } from '../utils/geometry.js';
 
 export default class WaveformNode extends Node {
@@ -48,6 +48,9 @@ export default class WaveformNode extends Node {
     
     // Trigger state tracking
     this._vTriggersHitThisPlayback = new Set(); // Track which V triggers have fired
+    
+    // Waveform color customization
+    this.waveformHue = COLOR_PICKER_DEFAULT_HUE; // Default orange (30°)
   }
 
   /**
@@ -323,6 +326,51 @@ export default class WaveformNode extends Node {
   }
 
   /**
+   * Set waveform hue (0-360 degrees)
+   * @param {number} hue - Hue value in degrees
+   */
+  setWaveformHue(hue) {
+    this.waveformHue = clamp(hue, 0, 360);
+    
+    this.emit('waveform-color-changed', {
+      node: this,
+      hue: this.waveformHue
+    });
+  }
+
+  /**
+   * Get waveform color as RGB array for rendering
+   * Converts HSB (hue, 100%, 100%) to RGB
+   * @returns {number[]} RGB color array [r, g, b]
+   */
+  getWaveformColor() {
+    // Use P5.js color conversion via global window.p5 instance
+    if (window.p5Instance && window.p5Instance.color) {
+      const p = window.p5Instance;
+      p.colorMode(p.HSB, 360, 100, 100);
+      const c = p.color(this.waveformHue, 100, 100);
+      p.colorMode(p.RGB, 255);
+      return [p.red(c), p.green(c), p.blue(c)];
+    }
+    
+    // Fallback HSB to RGB conversion (hue in degrees, S=100%, B=100%)
+    const h = this.waveformHue / 60;
+    const c = 255; // Chroma (full brightness, full saturation)
+    const x = c * (1 - Math.abs((h % 2) - 1));
+    const m = 0;
+    
+    let r, g, b;
+    if (h >= 0 && h < 1) { r = c; g = x; b = 0; }
+    else if (h >= 1 && h < 2) { r = x; g = c; b = 0; }
+    else if (h >= 2 && h < 3) { r = 0; g = c; b = x; }
+    else if (h >= 3 && h < 4) { r = 0; g = x; b = c; }
+    else if (h >= 4 && h < 5) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+    
+    return [r + m, g + m, b + m];
+  }
+
+  /**
    * Generate new waveform
    * @param {string} type - Waveform type ('sine', 'sawtooth', 'random')
    * @param {number} samples - Number of samples (optional)
@@ -384,6 +432,7 @@ export default class WaveformNode extends Node {
       cc: this.cc,
       sourceDeviceName: this.sourceDeviceName,
       durationMs: this.durationMs,
+      waveformHue: this.waveformHue,
       vTriggers: this.vTriggers.map(t => t.toJSON()),
       hTriggers: this.hTriggers.map(t => t.toJSON())
     };
@@ -405,6 +454,9 @@ export default class WaveformNode extends Node {
     node.cc = data.cc || 1;
     node.sourceDeviceName = data.sourceDeviceName || '';
     node.createdAt = data.createdAt || Date.now();
+    
+    // Restore waveform color (with fallback to default)
+    node.waveformHue = data.waveformHue !== undefined ? data.waveformHue : COLOR_PICKER_DEFAULT_HUE;
     
     // Restore triggers if present
     if (data.vTriggers && Array.isArray(data.vTriggers)) {

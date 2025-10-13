@@ -29,7 +29,12 @@ import {
   PORT_HOVER_ARROW_COLOR,
   VTRIGGER_ARROW_CHAR,
   HTRIGGER_ARROW_CHAR,
-  DELETE_ICON_R
+  DELETE_ICON_R,
+  COLOR_PICKER_WIDTH,
+  COLOR_PICKER_MARGIN,
+  COLOR_PICKER_ARROW_CHAR,
+  COLOR_PICKER_ARROW_SIZE,
+  COLOR_PICKER_ARROW_OFFSET
 } from '../config/constants.js';
 
 export default class NodeRenderer {
@@ -116,6 +121,7 @@ export default class NodeRenderer {
     
     const { gx, gy, gw, gh } = nodeData.getGraphRect();
     
+    // WaveformNode always uses white constant (oscilloscopes have custom colors)
     this.canvas.stroke(...COLOR_WAVEFORM_NODE);
     this.canvas.strokeWeight(1);
     this.canvas.noFill();
@@ -367,6 +373,72 @@ export default class NodeRenderer {
     // Delete icon in center using standardized constant
     const center = nodeData.getCenter();
     this.canvas.drawDeleteIcon(center.x, center.y, DELETE_ICON_R);
+  }
+
+  /**
+   * Draw color picker overlay on deletion overlay
+   * Shows hue spectrum rectangle on left edge with arrow indicator
+   */
+  drawColorPickerOverlay(nodeData) {
+    // Calculate spectrum rectangle dimensions
+    const spectrumX = nodeData.x;
+    const spectrumY = nodeData.y + COLOR_PICKER_MARGIN;
+    const spectrumW = COLOR_PICKER_WIDTH;
+    const spectrumH = nodeData.h - (COLOR_PICKER_MARGIN * 2);
+    
+    // Draw vertical hue spectrum (top to bottom: red → magenta)
+    this.canvas.noStroke();
+    for (let i = 0; i < spectrumH; i++) {
+      // Calculate hue for this vertical position (0-360°)
+      const hue = (i / spectrumH) * 360;
+      
+      // Convert HSB to RGB (100% saturation, 100% brightness)
+      const color = this._hsbToRgb(hue, 100, 100);
+      this.canvas.fill(...color);
+      this.canvas.rect(spectrumX, spectrumY + i, spectrumW, 1);
+    }
+    
+    // Calculate arrow position based on node's current hue
+    const hue = nodeData.waveformHue || 30; // Default to orange if not set
+    const arrowY = spectrumY + (hue / 360) * spectrumH;
+    const arrowX = spectrumX + spectrumW + COLOR_PICKER_ARROW_OFFSET;
+    
+    // Draw left-pointing arrow
+    this.canvas.noStroke();
+    this.canvas.fill(255); // White arrow
+    this.canvas.textAlign(this.canvas.LEFT, this.canvas.CENTER);
+    this.canvas.textSize(COLOR_PICKER_ARROW_SIZE);
+    this.canvas.text(COLOR_PICKER_ARROW_CHAR, arrowX, arrowY);
+  }
+
+  /**
+   * Convert HSB to RGB
+   * @param {number} h - Hue (0-360)
+   * @param {number} s - Saturation (0-100)
+   * @param {number} b - Brightness (0-100)
+   * @returns {number[]} RGB array [r, g, b]
+   * @private
+   */
+  _hsbToRgb(h, s, b) {
+    s = s / 100;
+    b = b / 100;
+    const c = b * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = b - c;
+    
+    let r, g, bVal;
+    if (h >= 0 && h < 60) { r = c; g = x; bVal = 0; }
+    else if (h >= 60 && h < 120) { r = x; g = c; bVal = 0; }
+    else if (h >= 120 && h < 180) { r = 0; g = c; bVal = x; }
+    else if (h >= 180 && h < 240) { r = 0; g = x; bVal = c; }
+    else if (h >= 240 && h < 300) { r = x; g = 0; bVal = c; }
+    else { r = c; g = 0; bVal = x; }
+    
+    return [
+      Math.round((r + m) * 255),
+      Math.round((g + m) * 255),
+      Math.round((bVal + m) * 255)
+    ];
   }
 
   /**

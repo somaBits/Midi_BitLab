@@ -13,7 +13,8 @@ import {
   OSCILLOSCOPE_LABEL_PLACEHOLDER,
   CREATE_AREA_RIGHT_WIDTH,
   CC_MAX_VALUE,
-  PIXELS_PER_SECOND
+  PIXELS_PER_SECOND,
+  COLOR_PICKER_DEFAULT_HUE
 } from '../config/constants.js';
 import { clamp } from '../utils/geometry.js';
 
@@ -42,6 +43,45 @@ export default class OscilloscopeNode extends Node {
     // Live indicator state
     this.lastDataTime = 0;
     this.isReceivingData = false;
+    
+    // Waveform color customization
+    this.waveformHue = COLOR_PICKER_DEFAULT_HUE; // Default orange (30°)
+  }
+
+  /**
+   * Set waveform hue (0-360 degrees)
+   * @param {number} hue - Hue value in degrees
+   */
+  setWaveformHue(hue) {
+    this.waveformHue = clamp(hue, 0, 360);
+    
+    this.emit('waveform-color-changed', {
+      node: this,
+      hue: this.waveformHue
+    });
+  }
+
+  /**
+   * Get waveform color as RGB array for rendering
+   * Converts HSB (hue, 100%, 100%) to RGB
+   * @returns {number[]} RGB color array [r, g, b]
+   */
+  getWaveformColor() {
+    // Fallback HSB to RGB conversion (hue in degrees, S=100%, B=100%)
+    const h = this.waveformHue / 60;
+    const c = 255; // Chroma (full brightness, full saturation)
+    const x = c * (1 - Math.abs((h % 2) - 1));
+    const m = 0;
+    
+    let r, g, b;
+    if (h >= 0 && h < 1) { r = c; g = x; b = 0; }
+    else if (h >= 1 && h < 2) { r = x; g = c; b = 0; }
+    else if (h >= 2 && h < 3) { r = 0; g = c; b = x; }
+    else if (h >= 3 && h < 4) { r = 0; g = x; b = c; }
+    else if (h >= 4 && h < 5) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+    
+    return [r + m, g + m, b + m];
   }
 
   /**
@@ -408,6 +448,7 @@ export default class OscilloscopeNode extends Node {
       ...super.toJSON(),
       type: 'oscilloscope',
       selectedSource: this.selectedSource,
+      waveformHue: this.waveformHue,
       hTriggers: this.hTriggers.map(t => t.toJSON())
     };
   }
@@ -420,6 +461,9 @@ export default class OscilloscopeNode extends Node {
     
     node.id = data.id;
     node.createdAt = data.createdAt || Date.now();
+    
+    // Restore waveform color (with fallback to default)
+    node.waveformHue = data.waveformHue !== undefined ? data.waveformHue : COLOR_PICKER_DEFAULT_HUE;
     
     // Restore source selection
     if (data.selectedSource) {

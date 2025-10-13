@@ -5,7 +5,7 @@
  */
 
 import { pointInRect, computeDockSnap, dist2 } from '../utils/geometry.js';
-import { CLICK_DRAG_THRESHOLD, SNAP_PX, SNAP_NEAR_PX, DELETE_ICON_R, UNGROUP_DISTANCE } from '../config/constants.js';
+import { CLICK_DRAG_THRESHOLD, SNAP_PX, SNAP_NEAR_PX, DELETE_ICON_R, UNGROUP_DISTANCE, COLOR_PICKER_WIDTH, COLOR_PICKER_MARGIN } from '../config/constants.js';
 
 export default class InteractionController {
   constructor(app) {
@@ -63,6 +63,13 @@ export default class InteractionController {
     // Cable hover state
     this.hoveredConnection = null;
     
+    // Color picker drag state
+    this.colorPickerDrag = {
+      active: false,
+      node: null,
+      startY: 0
+    };
+    
     // Last mouse position
     this.lastMouseX = 0;
     this.lastMouseY = 0;
@@ -107,7 +114,9 @@ export default class InteractionController {
   handleMouseDragged() {
     const mousePos = this.app.canvas.getMousePos();
     
-    if (this.cableDrag.active) {
+    if (this.colorPickerDrag.active) {
+      this._handleColorPickerDrag(mousePos.y);
+    } else if (this.cableDrag.active) {
       this._handleCableDrag(mousePos.x, mousePos.y);
     } else if (this.triggerDrag.active) {
       this._handleTriggerDrag(mousePos.x, mousePos.y);
@@ -138,6 +147,12 @@ export default class InteractionController {
       // Right-click release should NOT affect deletion state
       this.lastMouseX = mousePos.x;
       this.lastMouseY = mousePos.y;
+      return;
+    }
+
+    // Handle color picker drag release (high priority)
+    if (this.colorPickerDrag.active) {
+      this._endColorPickerDrag();
       return;
     }
 
@@ -188,11 +203,30 @@ export default class InteractionController {
       }
     }
 
-    // If a deletion overlay exists, consume left press; handle on release
+    // If a deletion overlay exists, check for color picker or delete icon interaction
     if (this.deletionState.target) {
-      console.log('Deletion target exists - consuming left press; release will handle deletion/cancel');
+      console.log('Deletion target exists - checking for color picker or delete icon interaction');
+      
+      // Check for color picker spectrum click (only for nodes with waveformHue)
+      const target = this.deletionState.target;
+      if (this.deletionState.type === 'node' && target.getWaveformColor && typeof target.waveformHue === 'number') {
+        // Calculate spectrum bounds using imported constants
+        const spectrumX = target.x;
+        const spectrumY = target.y + COLOR_PICKER_MARGIN;
+        const spectrumW = COLOR_PICKER_WIDTH;
+        const spectrumH = target.h - (COLOR_PICKER_MARGIN * 2);
+        
+        // Check if click is within spectrum
+        if (mouseX >= spectrumX && mouseX <= spectrumX + spectrumW &&
+            mouseY >= spectrumY && mouseY <= spectrumY + spectrumH) {
+          console.log('Color picker spectrum clicked - starting drag');
+          this._startColorPickerDrag(target, mouseY);
+          return;
+        }
+      }
+      
+      // Check for delete icon click
       const iconPos = this.deletionState.iconPosition;
-      // Note: Use 0.75 * DELETE_ICON_R for parity; still defer actual deletion to release
       if (iconPos) {
         const hitR = 0.75 * DELETE_ICON_R;
         if (dist2(mouseX, mouseY, iconPos.x, iconPos.y) <= hitR * hitR) {
@@ -1600,6 +1634,86 @@ export default class InteractionController {
   handleCreateArea(node, areaType, mouseX, mouseY) {
     // This method is now implemented via _handleEdgeAreaClick
     this._handleEdgeAreaClick(node, areaType, mouseX, mouseY);
+  }
+
+  /**
+   * Start color picker drag
+   * @param {object} node - Node with color picker
+   * @param {number} mouseY - Mouse Y coordinate
+   * @private
+   */
+  _startColorPickerDrag(node, mouseY) {
+    this.colorPickerDrag = {
+      active: true,
+      node: node,
+      startY: mouseY
+    };
+    
+    // Set vertical resize cursor
+    if (this.app.canvas.setCursor) {
+      this.app.canvas.setCursor('ns-resize');
+    }
+    
+    // Update hue immediately
+    this._updateColorPickerHue(mouseY);
+    
+    console.log(`Started color picker drag on node: ${node.label}`);
+  }
+
+  /**
+   * Handle color picker drag movement
+   * @param {number} mouseY - Mouse Y coordinate
+   * @private
+   */
+  _handleColorPickerDrag(mouseY) {
+    if (!this.colorPickerDrag.active || !this.colorPickerDrag.node) return;
+    
+    this._updateColorPickerHue(mouseY);
+  }
+
+  /**
+   * Update node color based on Y position in spectrum
+   * @param {number} mouseY - Mouse Y coordinate
+   * @private
+   */
+  _updateColorPickerHue(mouseY) {
+    const node = this.colorPickerDrag.node;
+    if (!node || typeof node.setWaveformHue !== 'function') return;
+    
+    // Calculate spectrum bounds
+    const spectrumY = node.y + COLOR_PICKER_MARGIN;
+    const spectrumH = node.h - (COLOR_PICKER_MARGIN * 2);
+    
+    // Clamp Y to spectrum bounds
+    const clampedY = Math.max(spectrumY, Math.min(mouseY, spectrumY + spectrumH));
+    
+    // Convert Y position to hue (0-360)
+    const normalizedY = (clampedY - spectrumY) / spectrumH;
+    const hue = normalizedY * 360;
+    
+    // Update node's waveform color
+    node.setWaveformHue(hue);
+  }
+
+  /**
+   * End color picker drag
+   * @private
+   */
+  _endColorPickerDrag() {
+    if (this.colorPickerDrag.active) {
+      console.log(`Ended color picker drag - final hue: ${this.colorPickerDrag.node.waveformHue.toFixed(1)}°`);
+    }
+    
+    this.colorPickerDrag = {
+      active: false,
+      node: null,
+      startY: 0
+    };
+    
+    // Reset cursor
+    if (this.app.canvas.resetCursor) {
+      this.app.canvas.resetCursor();
+    }
   }
 
   /**

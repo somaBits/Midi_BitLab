@@ -106,6 +106,14 @@ export const COLOR_TRIGGER_CONNECTOR = [255, 255, 255]; // White connector curve
 // Delete Overlay Constants
 export const DELETE_OVERLAY_COLOR = [0, 0, 0, 128]; // Node deletion overlay color
 
+// Color Picker Constants
+export const COLOR_PICKER_WIDTH = 10; // Width of hue spectrum rectangle
+export const COLOR_PICKER_MARGIN = 0; // Top/bottom margin for spectrum
+export const COLOR_PICKER_ARROW_CHAR = '◀'; // Left-pointing arrow
+export const COLOR_PICKER_ARROW_SIZE = 12; // Arrow text size
+export const COLOR_PICKER_DEFAULT_HUE = 30; // Default orange hue
+export const COLOR_PICKER_ARROW_OFFSET = 2; // Spacing between spectrum and arrow
+
 // Cable Constants
 export const CABLE_HIT_THRESHOLD = 6; // Hit detection threshold for cables
 export const CABLE_DRAG_PREVIEW_COLOR = [255, 255, 0, 180]; // Yellow preview
