@@ -47,7 +47,7 @@ export default class MidiManager extends EventEmitter {
         throw new Error('Web MIDI API not supported');
       }
 
-      this.access = await navigator.requestMIDIAccess({ sysex: false });
+      this.access = await navigator.requestMIDIAccess({ sysex: true });
       this.access.onstatechange = this._onStateChange;
       
       this.refreshAll();
