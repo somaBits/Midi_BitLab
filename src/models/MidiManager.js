@@ -42,12 +42,24 @@ export default class MidiManager extends EventEmitter {
     if (this.initRequested) return;
     this.initRequested = true;
 
+    console.log('🎹 MidiManager.init() - Requesting MIDI access...');
+    console.log('  → Browser:', navigator.userAgent.includes('iPad') ? 'iPad' : 'Desktop');
+    console.log('  → Web MIDI API available:', 'requestMIDIAccess' in navigator);
+
     try {
       if (!('requestMIDIAccess' in navigator)) {
         throw new Error('Web MIDI API not supported');
       }
 
-      this.access = await navigator.requestMIDIAccess({ sysex: true });
+      // Use plain requestMIDIAccess() like midi-surf (no sysex option)
+      // iOS may have issues with sysex: true causing permission failures
+      console.log('  → Calling navigator.requestMIDIAccess()...');
+      this.access = await navigator.requestMIDIAccess();
+      
+      console.log('✅ MIDI access granted successfully!');
+      console.log('  → Inputs available:', this.access.inputs.size);
+      console.log('  → Outputs available:', this.access.outputs.size);
+      
       this.access.onstatechange = this._onStateChange;
       
       this.refreshAll();
@@ -56,7 +68,9 @@ export default class MidiManager extends EventEmitter {
       this.emit('ready', { ready: true });
       
     } catch (error) {
-      console.error('MIDI initialization failed:', error);
+      console.error('❌ MIDI initialization failed:', error);
+      console.error('  → Error name:', error.name);
+      console.error('  → Error message:', error.message);
       this.emit('error', { error: error.message });
     }
   }
@@ -82,9 +96,17 @@ export default class MidiManager extends EventEmitter {
     this.outputs = [];
     if (!this.access) return;
 
+    console.log('📤 Refreshing MIDI outputs...');
     for (const output of this.access.outputs.values()) {
+      console.log('  → Output found:', {
+        name: output.name,
+        manufacturer: output.manufacturer,
+        id: output.id,
+        state: output.state
+      });
       this.outputs.push(output);
     }
+    console.log(`  ✓ Total outputs: ${this.outputs.length}`);
 
     // Validate current selection
     if (this.outputSelection !== 'all') {
@@ -108,9 +130,17 @@ export default class MidiManager extends EventEmitter {
     this.inputs = [];
     if (!this.access) return;
 
+    console.log('📥 Refreshing MIDI inputs...');
     for (const input of this.access.inputs.values()) {
+      console.log('  → Input found:', {
+        name: input.name,
+        manufacturer: input.manufacturer,
+        id: input.id,
+        state: input.state
+      });
       this.inputs.push(input);
     }
+    console.log(`  ✓ Total inputs: ${this.inputs.length}`);
 
     // Validate current selection
     if (this.inputs.length === 0) {

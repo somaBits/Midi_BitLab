@@ -720,12 +720,24 @@ export default class AppController {
    * @private
    */
   _onMidiDevicesChanged(data) {
+    console.log('🔄 AppController._onMidiDevicesChanged called');
+    console.log('  → Inputs to display:', data.inputs.length);
+    console.log('  → Outputs to display:', data.outputs.length);
+    
+    // Log device details
+    if (data.inputs.length > 0) {
+      console.log('  → Input device names:', data.inputs.map(i => i.name));
+    }
+    if (data.outputs.length > 0) {
+      console.log('  → Output device names:', data.outputs.map(o => o.name));
+    }
+    
     // Update sidebar with new device lists
     this.sidebar.updateInputDevices(data.inputs, this.midi.inputMode);
     this.sidebar.updateOutputDevices(data.outputs, this.midi.outputSelection);
     this.sidebar.updateChannel(this.midi.channel);
     
-    console.log(`MIDI devices updated: ${data.inputs.length} inputs, ${data.outputs.length} outputs`);
+    console.log(`✅ Sidebar updated with ${data.inputs.length} inputs, ${data.outputs.length} outputs`);
   }
 
   /**
