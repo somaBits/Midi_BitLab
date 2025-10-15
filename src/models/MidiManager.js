@@ -51,10 +51,10 @@ export default class MidiManager extends EventEmitter {
         throw new Error('Web MIDI API not supported');
       }
 
-      // Use plain requestMIDIAccess() like midi-surf (no sysex option)
-      // iOS may have issues with sysex: true causing permission failures
-      console.log('  → Calling navigator.requestMIDIAccess()...');
-      this.access = await navigator.requestMIDIAccess();
+      // CRITICAL: iOS requires explicit { sysex: false } parameter
+      // Omitting the parameter or using sysex: true breaks on iOS
+      console.log('  → Calling navigator.requestMIDIAccess({ sysex: false })...');
+      this.access = await navigator.requestMIDIAccess({ sysex: false });
       
       console.log('✅ MIDI access granted successfully!');
       console.log('  → Inputs available:', this.access.inputs.size);
