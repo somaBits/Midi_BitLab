@@ -33,6 +33,108 @@ export default class MidiManager extends EventEmitter {
     // Bind methods for event handlers
     this._onMIDIMessage = this._onMIDIMessage.bind(this);
     this._onStateChange = this._onStateChange.bind(this);
+    
+    // Schedule delayed initialization for iOS Web MIDI Browser compatibility
+    this._scheduleInit();
+  }
+
+  /**
+   * Schedule MIDI initialization after window load + user gesture
+   * CRITICAL for iOS Web MIDI Browser - must wait for shim injection
+   * @private
+   */
+  _scheduleInit() {
+    if (typeof window === 'undefined') return;
+    
+    const attemptInit = () => {
+      if (this.initRequested) return;
+      this._initMIDIAware();
+    };
+    
+    // Wait for window load, then user gesture
+    if (document.readyState === 'complete') {
+      // Already loaded - set up gesture listeners immediately
+      this._setupGestureListeners(attemptInit);
+    } else {
+      // Wait for load event
+      window.addEventListener('load', () => {
+        this._setupGestureListeners(attemptInit);
+      });
+    }
+  }
+
+  /**
+   * Setup user gesture listeners for MIDI initialization
+   * @private
+   */
+  _setupGestureListeners(callback) {
+    const gestureHandler = () => {
+      callback();
+      // Remove listeners after first gesture
+      document.body.removeEventListener('touchstart', gestureHandler);
+      document.body.removeEventListener('click', gestureHandler);
+    };
+    
+    document.body.addEventListener('touchstart', gestureHandler, { passive: true });
+    document.body.addEventListener('click', gestureHandler);
+    
+    console.log('🎹 MidiManager: Waiting for user gesture to initialize MIDI...');
+  }
+
+  /**
+   * Initialize MIDI with shim-aware polling
+   * Waits for navigator.requestMIDIAccess to be injected by iOS Web MIDI Browser
+   * @private
+   */
+  async _initMIDIAware() {
+    if (this.initRequested) return;
+    this.initRequested = true;
+
+    console.log('🎹 MidiManager: User gesture detected - initializing MIDI...');
+    console.log('  → Browser:', navigator.userAgent.includes('iPad') || navigator.userAgent.includes('iPhone') ? 'iOS' : 'Desktop');
+    
+    // Wait for shim to inject navigator.requestMIDIAccess (if needed)
+    console.log('  → Polling for Web MIDI API availability...');
+    for (let i = 0; i < 10; i++) {
+      if (typeof navigator.requestMIDIAccess === 'function') {
+        console.log(`  → Web MIDI API found after ${i * 200}ms`);
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    // Check if API is available after polling
+    if (typeof navigator.requestMIDIAccess !== 'function') {
+      const error = 'Web MIDI API not available (shim not injected or not supported)';
+      console.error('❌ ' + error);
+      this.emit('error', { error });
+      return;
+    }
+
+    // Now safe to call requestMIDIAccess
+    try {
+      // CRITICAL: iOS requires explicit { sysex: false } parameter
+      // Omitting the parameter or using sysex: true breaks on iOS
+      console.log('  → Calling navigator.requestMIDIAccess({ sysex: false })...');
+      this.access = await navigator.requestMIDIAccess({ sysex: false });
+      
+      console.log('✅ MIDI access granted successfully!');
+      console.log('  → Inputs available:', this.access.inputs.size);
+      console.log('  → Outputs available:', this.access.outputs.size);
+      
+      this.access.onstatechange = this._onStateChange;
+      
+      this.refreshAll();
+      this.ready = true;
+      
+      this.emit('ready', { ready: true });
+      
+    } catch (error) {
+      console.error('❌ MIDI initialization failed:', error);
+      console.error('  → Error name:', error.name);
+      console.error('  → Error message:', error.message);
+      this.emit('error', { error: error.message });
+    }
   }
 
   /**

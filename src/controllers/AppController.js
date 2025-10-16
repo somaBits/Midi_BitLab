@@ -88,11 +88,13 @@ export default class AppController {
     this.canvas.init();
     
     // Initialize MIDI system
+    // NOTE: MidiManager automatically schedules initialization in its constructor
+    // It waits for window.load + user gesture + shim injection (iOS compatibility)
+    // We only need to set up event listeners here
     this.midi.on('ready', this._onMidiReady);
     this.midi.on('error', this._onMidiError);
     this.midi.on('cc-received', this._onMidiCC);
     this.midi.on('devices-changed', this._onMidiDevicesChanged.bind(this));
-    this.midi.init();
     
     // Initialize sidebar
     this.sidebar.init();
