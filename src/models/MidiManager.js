@@ -39,46 +39,23 @@ export default class MidiManager extends EventEmitter {
   }
 
   /**
-   * Schedule MIDI initialization after window load + user gesture
+   * Schedule MIDI initialization after window load
    * CRITICAL for iOS Web MIDI Browser - must wait for shim injection
    * @private
    */
   _scheduleInit() {
     if (typeof window === 'undefined') return;
     
-    const attemptInit = () => {
-      if (this.initRequested) return;
-      this._initMIDIAware();
-    };
-    
-    // Wait for window load, then user gesture
+    // Wait for window load before initializing (gives shim time to inject)
     if (document.readyState === 'complete') {
-      // Already loaded - set up gesture listeners immediately
-      this._setupGestureListeners(attemptInit);
+      // Already loaded - initialize immediately
+      this._initMIDIAware();
     } else {
       // Wait for load event
       window.addEventListener('load', () => {
-        this._setupGestureListeners(attemptInit);
+        this._initMIDIAware();
       });
     }
-  }
-
-  /**
-   * Setup user gesture listeners for MIDI initialization
-   * @private
-   */
-  _setupGestureListeners(callback) {
-    const gestureHandler = () => {
-      callback();
-      // Remove listeners after first gesture
-      document.body.removeEventListener('touchstart', gestureHandler);
-      document.body.removeEventListener('click', gestureHandler);
-    };
-    
-    document.body.addEventListener('touchstart', gestureHandler, { passive: true });
-    document.body.addEventListener('click', gestureHandler);
-    
-    console.log('🎹 MidiManager: Waiting for user gesture to initialize MIDI...');
   }
 
   /**
@@ -90,7 +67,7 @@ export default class MidiManager extends EventEmitter {
     if (this.initRequested) return;
     this.initRequested = true;
 
-    console.log('🎹 MidiManager: User gesture detected - initializing MIDI...');
+    console.log('🎹 MidiManager: Initializing MIDI after window load...');
     console.log('  → Browser:', navigator.userAgent.includes('iPad') || navigator.userAgent.includes('iPhone') ? 'iOS' : 'Desktop');
     
     // Wait for shim to inject navigator.requestMIDIAccess (if needed)
