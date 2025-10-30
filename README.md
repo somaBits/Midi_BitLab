@@ -34,6 +34,9 @@ A visual programming environment for MIDI Control Change messages with real-time
 - **Hover over cable** → Shows delete icon at midpoint
 - **Click delete icon** → Removes connection
 
+Created by Charles Windlin
+CC BY-NC-SA 4.0
+
 **5. Group Nodes**
 - **Hold Shift + drag node near another** → Blue outline preview appears
 - **Release** → Nodes snap together and form group (white dashed border)
