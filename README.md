@@ -34,9 +34,6 @@ A visual programming environment for MIDI Control Change messages with real-time
 - **Hover over cable** → Shows delete icon at midpoint
 - **Click delete icon** → Removes connection
 
-Created by Charles Windlin
-CC BY-NC-SA 4.0
-
 **5. Group Nodes**
 - **Hold Shift + drag node near another** → Blue outline preview appears
 - **Release** → Nodes snap together and form group (white dashed border)
@@ -99,3 +96,7 @@ CC BY-NC-SA 4.0
 - **Trigger sequencing**: Connect output ports to input ports → Chain playback across nodes
 - **Group playback from trigger**: Connect cable to VTrigger input → Group plays from that position
 - **Delete persistence**: Right-click node → Overlay stays until you release inside node or on delete icon
+
+## Creative Commons
+Created by Charles Windlin
+CC BY-NC-SA 4.0
