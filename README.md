@@ -81,15 +81,6 @@ A visual programming environment for MIDI Control Change messages with real-time
 | **Shift** | Enable grouping mode during drag |
 | **Alt** | Enable duplication mode during drag |
 
-### Visual Feedback
-- **Red playhead** → Individual node playback
-- **Blue playhead** → Group synchronized playback
-- **White dashed border** → Nodes are grouped
-- **Blue dashed border** → Group preview during Shift+drag
-- **Yellow cable** → Connection drag preview
-- **White cable** → Completed connection
-- **Cursor changes** → `ew-resize` (horizontal trigger), `ns-resize` (vertical trigger), `copy` (Alt+drag)
-
 ## Pro Tips
 
 - **Multi-track recording**: Send multiple CCs simultaneously → Creates grouped nodes automatically
