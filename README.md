@@ -3,8 +3,8 @@
 
 # MIDI BitLab
 
-A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, group playback, and project persistence. Try it out here: [(https://somabits.github.io/Midi_BitLab/)
-](https://somabits.github.io/Midi_BitLab/)
+A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, group playback, and project persistence. It is designed to work with a toolkit called Habtic Bits Lab, a hands‑on prototyping kit for exploring vibration, heat, and shape‑change through the body. More information about the Habtic Bits Lab can be found here: [https://hbits.forsslundsystems.com](https://hbits.forsslundsystems.com)
+
 ## Getting Started
 
 ### Basic Workflow
