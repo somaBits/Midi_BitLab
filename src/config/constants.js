@@ -138,3 +138,13 @@ export const OSCILLOSCOPE_DEFAULT_HEIGHT = 80;
 export const OSCILLOSCOPE_LABEL_PLACEHOLDER = '(select source)';
 export const OSCILLOSCOPE_LIVE_INDICATOR_COLOR = [255, 0, 0]; // Red dot
 export const OSCILLOSCOPE_LIVE_INDICATOR_SIZE = 5; // Diameter in pixels
+export const OSCILLOSCOPE_DIAMOND_PORT_SIZE = 30; // Square size before 45° rotation
+export const OSCILLOSCOPE_DIAMOND_TEXT_SIZE = 9; // CC value text size
+export const COLOR_DIAMOND_CONNECTION = [255, 102, 0]; // Orange for diamond connections
+
+// Average Window Node Constants
+export const AVERAGE_WINDOW_DEFAULT_WIDTH = 200; // Default width in pixels
+export const AVERAGE_WINDOW_MIN_WIDTH = 1; // Minimum width (1 pixel)
+export const AVERAGE_WINDOW_HEIGHT = 80; // Fixed height
+export const AVERAGE_WINDOW_LEFT_EDGE_WIDTH = 13; // 10px base + 3px fatter = 13px
+export const AVERAGE_WINDOW_LABEL_PLACEHOLDER = 'AVG: --'; // Placeholder label

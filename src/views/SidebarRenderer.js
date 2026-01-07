@@ -10,6 +10,7 @@ export default class SidebarRenderer {
     this.sidebar = null;
     this.toggleButton = null;
     this.oscilloscopeButton = null;
+    this.averageWindowButton = null;
     this.inputList = null;
     this.outputList = null;
     this.channelSelect = null;
@@ -34,6 +35,7 @@ export default class SidebarRenderer {
   init() {
     this.createToggleButton();
     this.createOscilloscopeButton();
+    this.createAverageWindowButton();
     this.createSidebar();
     this.setCollapsed(true); // Start expanded
   }
@@ -103,6 +105,46 @@ export default class SidebarRenderer {
     });
     
     document.body.appendChild(this.oscilloscopeButton);
+  }
+
+  /**
+   * Create the Add Average Window button
+   * @private
+   */
+  createAverageWindowButton() {
+    this.averageWindowButton = document.createElement('button');
+    Object.assign(this.averageWindowButton.style, {
+      position: 'fixed',
+      left: '200px', // Oscilloscope button + 10px margin
+      top: '8px',
+      zIndex: '100',
+      padding: '6px 12px',
+      borderRadius: '6px',
+      border: '1px solid #666',
+      background: '#111',
+      color: '#fff',
+      font: '12px/1 sans-serif',
+      cursor: 'pointer',
+      transition: 'background 160ms ease-out',
+      whiteSpace: 'nowrap'
+    });
+    
+    this.averageWindowButton.textContent = 'Add Average Window';
+    
+    // Hover effect
+    this.averageWindowButton.addEventListener('mouseenter', () => {
+      this.averageWindowButton.style.background = '#222';
+    });
+    this.averageWindowButton.addEventListener('mouseleave', () => {
+      this.averageWindowButton.style.background = '#111';
+    });
+    
+    // Click handler - emit event
+    this.averageWindowButton.addEventListener('click', () => {
+      this.emit('create-average-window');
+    });
+    
+    document.body.appendChild(this.averageWindowButton);
   }
 
   /**
@@ -737,6 +779,11 @@ export default class SidebarRenderer {
     if (this.oscilloscopeButton) {
       document.body.removeChild(this.oscilloscopeButton);
       this.oscilloscopeButton = null;
+    }
+
+    if (this.averageWindowButton) {
+      document.body.removeChild(this.averageWindowButton);
+      this.averageWindowButton = null;
     }
 
     if (this.sidebar) {

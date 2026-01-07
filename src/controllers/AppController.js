@@ -7,11 +7,13 @@
 import MidiManager from '../models/MidiManager.js';
 import WaveformNode from '../models/WaveformNode.js';
 import OscilloscopeNode from '../models/OscilloscopeNode.js';
+import AverageWindowNode from '../models/AverageWindowNode.js';
 import GroupManager from '../models/GroupManager.js';
 import ProjectSerializer from '../models/ProjectSerializer.js';
 import CanvasManager from '../views/CanvasManager.js';
 import NodeRenderer from '../views/NodeRenderer.js';
 import OscilloscopeRenderer from '../views/OscilloscopeRenderer.js';
+import AverageWindowRenderer from '../views/AverageWindowRenderer.js';
 import SidebarRenderer from '../views/SidebarRenderer.js';
 import SourceSelector from '../views/SourceSelector.js';
 import InteractionController from './InteractionController.js';
@@ -44,6 +46,7 @@ export default class AppController {
     this.canvas = new CanvasManager();
     this.nodeRenderer = new NodeRenderer(this.canvas);
     this.oscilloscopeRenderer = new OscilloscopeRenderer(this.canvas);
+    this.averageWindowRenderer = new AverageWindowRenderer(this.canvas);
     this.sidebar = new SidebarRenderer();
     this.sourceSelector = new SourceSelector();
     this.interaction = new InteractionController(this);
@@ -130,7 +133,10 @@ export default class AppController {
     // Update all nodes
     this._updateNodes();
     
-    // Update interaction states (triggers, cursors, etc.)
+    // Propagate continuous values through diamond port connections (60fps streaming)
+    this._propagateContinuousValues();
+    
+    // Update interaction hover states (cursor management)
     this._updateInteractionStates();
     
     // Render connections (behind nodes)
@@ -301,6 +307,26 @@ export default class AppController {
   }
 
   /**
+   * Propagate continuous values through diamond port connections
+   * Called every frame (60fps) for real-time value streaming
+   * @private
+   */
+  _propagateContinuousValues() {
+    for (const connection of this.connections) {
+      const portA = connection.portA;
+      const portB = connection.portB;
+      
+      // Check if this connection has a ccOutput port (diamond port connection)
+      if (portA.type === 'ccOutput') {
+        connection.propagateContinuousValue(portA);
+      } else if (portB.type === 'ccOutput') {
+        connection.propagateContinuousValue(portB);
+      }
+      // Trigger connections use propagateFireEvent() which is called on-demand during trigger firing
+    }
+  }
+
+  /**
    * Update interaction states (hover, cursor management, etc.)
    * @private
    */
@@ -328,7 +354,9 @@ export default class AppController {
       const nodeState = interactionState[node.id] || {};
       
       // Use appropriate renderer based on node type
-      if (node instanceof OscilloscopeNode) {
+      if (node instanceof AverageWindowNode) {
+        this.averageWindowRenderer.draw(node, nodeState);
+      } else if (node instanceof OscilloscopeNode) {
         this.oscilloscopeRenderer.draw(node, nodeState);
       } else {
         this.nodeRenderer.draw(node, nodeState);
@@ -709,9 +737,9 @@ export default class AppController {
       );
     }
     
-    // Forward CC data to all oscilloscope nodes
+    // Forward CC data to all oscilloscope and average window nodes
     for (const node of this.nodes) {
-      if (node instanceof OscilloscopeNode) {
+      if (node instanceof OscilloscopeNode || node instanceof AverageWindowNode) {
         node.onCCReceived(data);
       }
     }
@@ -764,6 +792,8 @@ export default class AppController {
       
       node.setCC(nodeData.cc);
       node.setSourceDeviceName(nodeData.sourceDeviceName);
+      node.sourceDeviceId = nodeData.sourceDeviceId; // Set device ID for targeted MIDI output routing
+      node.sourceDeviceRawName = nodeData.sourceDeviceRawName; // Set raw device name for output matching
       
       this.addNode(node);
       createdNodes.push(node);
@@ -1013,8 +1043,24 @@ export default class AppController {
       return;
     }
     
-    this.sourceSelector.show(node, x, y, this.midi);
+    this.sourceSelector.show(node, x, y, this.midi, 'oscilloscope');
     console.log(`Showing source selector for oscilloscope at (${x}, ${y})`);
+  }
+
+  /**
+   * Show source selector for average window node
+   * @param {object} node - Average window node to configure
+   * @param {number} x - Screen X position for dropdown
+   * @param {number} y - Screen Y position for dropdown
+   */
+  showAverageWindowSourceSelector(node, x, y) {
+    if (!(node instanceof AverageWindowNode)) {
+      console.warn('showAverageWindowSourceSelector called on non-average-window node');
+      return;
+    }
+    
+    this.sourceSelector.show(node, x, y, this.midi, 'average-window');
+    console.log(`Showing source selector for average window at (${x}, ${y})`);
   }
 
   /**
@@ -1066,10 +1112,24 @@ export default class AppController {
       this.hasUnsavedChanges = true;
     });
     
+    // Average Window source selection event listener
+    document.addEventListener('average-window-source-selected', (event) => {
+      const { node, deviceId, deviceName, cc } = event.detail;
+      console.log(`Average Window source selected: ${deviceName} > CC ${cc}`);
+      node.setSource(deviceId, deviceName, cc);
+      this.hasUnsavedChanges = true;
+    });
+    
     // Oscilloscope creation button event listener
     document.addEventListener('sidebar-create-oscilloscope', () => {
       console.log('Sidebar: Create Oscilloscope button clicked');
       this.createOscilloscope();
+    });
+    
+    // Average Window creation button event listener
+    document.addEventListener('sidebar-create-average-window', () => {
+      console.log('Sidebar: Create Average Window button clicked');
+      this.createAverageWindow();
     });
   }
 
@@ -1097,6 +1157,32 @@ export default class AppController {
     this.addNode(oscilloscope);
     
     console.log(`Created oscilloscope at (${x}, ${y})`);
+  }
+
+  /**
+   * Create a new average window node with cascade positioning
+   */
+  createAverageWindow() {
+    // Find last average window for cascade positioning
+    const averageWindows = this.nodes.filter(n => n instanceof AverageWindowNode);
+    let x, y;
+    
+    if (averageWindows.length > 0) {
+      // Cascade from last average window (+12, +12 offset)
+      const lastWindow = averageWindows[averageWindows.length - 1];
+      x = lastWindow.x + 12;
+      y = lastWindow.y + 12;
+    } else {
+      // First average window - default position
+      x = 640;
+      y = 320;
+    }
+    
+    // Create and add the average window
+    const averageWindow = new AverageWindowNode(x, y);
+    this.addNode(averageWindow);
+    
+    console.log(`Created average window at (${x}, ${y})`);
   }
 
   /**

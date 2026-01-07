@@ -70,6 +70,15 @@ export default class InteractionController {
       startY: 0
     };
     
+    // Left edge resize drag state (for average window nodes)
+    this.leftEdgeResizeDrag = {
+      active: false,
+      node: null,
+      startX: 0,
+      startNodeX: 0,
+      startNodeWidth: 0
+    };
+    
     // Last mouse position
     this.lastMouseX = 0;
     this.lastMouseY = 0;
@@ -114,7 +123,9 @@ export default class InteractionController {
   handleMouseDragged() {
     const mousePos = this.app.canvas.getMousePos();
     
-    if (this.colorPickerDrag.active) {
+    if (this.leftEdgeResizeDrag.active) {
+      this._handleLeftEdgeResize(mousePos.x);
+    } else if (this.colorPickerDrag.active) {
       this._handleColorPickerDrag(mousePos.y);
     } else if (this.cableDrag.active) {
       this._handleCableDrag(mousePos.x, mousePos.y);
@@ -147,6 +158,12 @@ export default class InteractionController {
       // Right-click release should NOT affect deletion state
       this.lastMouseX = mousePos.x;
       this.lastMouseY = mousePos.y;
+      return;
+    }
+
+    // Handle left edge resize release (high priority)
+    if (this.leftEdgeResizeDrag.active) {
+      this._endLeftEdgeResize();
       return;
     }
 
@@ -245,14 +262,35 @@ export default class InteractionController {
       return;
     }
 
-    // Check for trigger hits (after port hits)
-    console.log('Checking for trigger hits...');
-    const triggerHit = this._findTriggerAt(mouseX, mouseY, 8);
-    if (triggerHit) {
-      console.log(`Trigger hit found - starting trigger drag: ${triggerHit.type}Trigger on ${triggerHit.node.label}`);
-      this._startTriggerDrag(triggerHit, mouseX, mouseY);
-      return;
-    }
+    // Check for left edge resize (before trigger hits)
+    console.log('Checking for left edge resize...');
+    this._checkLeftEdgeResize(mouseX, mouseY).then(leftEdgeNode => {
+      if (leftEdgeNode) {
+        console.log(`Left edge hit found - starting left edge resize: ${leftEdgeNode.label}`);
+        this._startLeftEdgeResize(leftEdgeNode, mouseX);
+        return;
+      }
+      
+      // Continue with trigger hit checking if no left edge hit
+      console.log('Checking for trigger hits...');
+      const triggerHit = this._findTriggerAt(mouseX, mouseY, 8);
+      if (triggerHit) {
+        console.log(`Trigger hit found - starting trigger drag: ${triggerHit.type}Trigger on ${triggerHit.node.label}`);
+        this._startTriggerDrag(triggerHit, mouseX, mouseY);
+        return;
+      }
+      
+      // Continue with remaining click handling...
+      this._continueLeftClickHandling(mouseX, mouseY);
+    });
+    return; // Exit early since we're handling async
+  }
+  
+  /**
+   * Continue left click handling after async checks
+   * @private
+   */ 
+  _continueLeftClickHandling(mouseX, mouseY) {
 
     // Check for edge area hits (for trigger creation)
     console.log('Checking edge area hits...');
@@ -267,13 +305,22 @@ export default class InteractionController {
     console.log('Checking for node hit...');
     const node = this.app.getNodeAt(mouseX, mouseY);
     if (node) {
-      // Import OscilloscopeNode dynamically to check instance type
-      import('../models/OscilloscopeNode.js').then(({ default: OscilloscopeNode }) => {
+      // Import node types dynamically to check instance types
+      Promise.all([
+        import('../models/OscilloscopeNode.js'),
+        import('../models/AverageWindowNode.js')
+      ]).then(([{ default: OscilloscopeNode }, { default: AverageWindowNode }]) => {
         // Check if this is an oscilloscope node - show source selector on click
         if (node instanceof OscilloscopeNode) {
           // Check if click is in label area (top ~20px of node)
           const labelHeight = 20;
           if (mouseY >= node.y && mouseY <= node.y + labelHeight) {
+            // Block label click if ccInput port is connected
+            if (node.ccInputPort && this._isPortConnected(node.ccInputPort)) {
+              console.log('Oscilloscope label click blocked - ccInput port is connected');
+              return;
+            }
+            
             console.log('Oscilloscope label clicked - showing source selector');
             // Position dropdown below label (not at cursor)
             const dropdownX = node.x + 6; // Align with label text
@@ -283,7 +330,27 @@ export default class InteractionController {
           }
         }
         
-        // Not an oscilloscope label click - proceed with normal node interaction
+        // Check if this is an average window node - show source selector on click
+        if (node instanceof AverageWindowNode) {
+          // Check if click is in label area (top ~20px of node)
+          const labelHeight = 20;
+          if (mouseY >= node.y && mouseY <= node.y + labelHeight) {
+            // Block label click if ccInput port is connected
+            if (node.ccInputPort && this._isPortConnected(node.ccInputPort)) {
+              console.log('Average window label click blocked - ccInput port is connected');
+              return;
+            }
+            
+            console.log('Average window label clicked - showing source selector');
+            // Position dropdown below label (not at cursor)
+            const dropdownX = node.x + 6; // Align with label text
+            const dropdownY = node.y + 20; // Just below label
+            this.app.showAverageWindowSourceSelector(node, dropdownX, dropdownY);
+            return;
+          }
+        }
+        
+        // Not a label click - proceed with normal node interaction
         // Check if Alt is held - duplicate instead of dragging original
         if (this.altPressed) {
           console.log('Alt+node hit found - duplicating and dragging');
@@ -293,7 +360,7 @@ export default class InteractionController {
           this._startNodeDrag(node, mouseX, mouseY);
         }
       }).catch(error => {
-        console.error('Failed to import OscilloscopeNode:', error);
+        console.error('Failed to import node types:', error);
         // Fallback to normal node interaction
         if (this.altPressed) {
           this._duplicateAndDragNode(node, mouseX, mouseY);
@@ -1020,7 +1087,19 @@ export default class InteractionController {
       type: null
     };
     
-    // Priority 2: Check edge create areas (after triggers)
+    // Priority 2: Check for average window left edge resize (after triggers)
+    if (!this.triggerDrag.active && !this.dragState.active && !this.leftEdgeResizeDrag.active) {
+      this._checkLeftEdgeResize(mousePos.x, mousePos.y).then(leftEdgeNode => {
+        if (leftEdgeNode) {
+          // Over left edge - use ew-resize cursor
+          if (typeof window.cursor === 'function') {
+            window.cursor('ew-resize');
+          }
+        }
+      });
+    }
+    
+    // Priority 3: Check edge create areas (after triggers and left edge)
     if (!this.triggerDrag.active && !this.dragState.active) {
       const edgeHit = this._checkEdgeAreaHit(mousePos.x, mousePos.y);
       if (edgeHit) {
@@ -1031,7 +1110,7 @@ export default class InteractionController {
         return;
       }
       
-      // Priority 3: Check node bodies (after edge areas)
+      // Priority 4: Check node bodies (after edge areas)
       const node = this.app.getNodeAt(mousePos.x, mousePos.y);
       if (node) {
         // Over node body - use grab cursor
@@ -1041,7 +1120,7 @@ export default class InteractionController {
         return;
       }
       
-      // Priority 4: Empty space - default cursor
+      // Priority 5: Empty space - default cursor
       if (typeof window.cursor === 'function') {
         window.cursor('default');
       }
@@ -1193,6 +1272,27 @@ export default class InteractionController {
           }
         }
       }
+      
+      // Check for diamond CC ports (oscilloscope/average window nodes)
+      if (node.ccInputPort && node.ccInputPort.hits(mouseX, mouseY, threshold)) {
+        return {
+          node: node,
+          trigger: node.ccInputPort,  // Return the Port object
+          triggerType: 'diamond',
+          type: 'ccInput',
+          index: -1  // No index for single ports
+        };
+      }
+      
+      if (node.ccOutputPort && node.ccOutputPort.hits(mouseX, mouseY, threshold)) {
+        return {
+          node: node,
+          trigger: node.ccOutputPort,  // Return the Port object
+          triggerType: 'diamond',
+          type: 'ccOutput',
+          index: -1
+        };
+      }
     }
     
     return null;
@@ -1299,13 +1399,32 @@ export default class InteractionController {
     const roleB = this._getPortRole(portB);
     
     // Only allow connections between input and output ports
-    const validConnection = (roleA === 'in' && roleB === 'out') || (roleA === 'out' && roleB === 'in');
+    const validRoles = (roleA === 'in' && roleB === 'out') || (roleA === 'out' && roleB === 'in');
     
-    if (!validConnection) {
+    if (!validRoles) {
       console.log(`Connection blocked: ${roleA} port cannot connect to ${roleB} port`);
+      return false;
     }
     
-    return validConnection;
+    // Type validation - no mixing trigger and diamond ports
+    const typeA = portA.type;
+    const typeB = portB.type;
+    
+    const triggerTypes = ['input', 'output', 'up', 'down'];
+    const diamondTypes = ['ccInput', 'ccOutput'];
+    
+    const isATrigger = triggerTypes.includes(typeA);
+    const isBTrigger = triggerTypes.includes(typeB);
+    const isADiamond = diamondTypes.includes(typeA);
+    const isBDiamond = diamondTypes.includes(typeB);
+    
+    // Both must be same category (both triggers OR both diamonds)
+    if ((isATrigger && isBDiamond) || (isADiamond && isBTrigger)) {
+      console.log(`Connection blocked: Cannot mix trigger ports (${typeA}) and diamond ports (${typeB})`);
+      return false;
+    }
+    
+    return true;
   }
 
   /**
@@ -1714,6 +1833,135 @@ export default class InteractionController {
     if (this.app.canvas.resetCursor) {
       this.app.canvas.resetCursor();
     }
+  }
+
+  /**
+   * Check if mouse is over left edge resize area of any average window node
+   * @param {number} mouseX - Mouse X coordinate
+   * @param {number} mouseY - Mouse Y coordinate
+   * @returns {object|null} Node with left edge hit or null
+   * @private
+   */
+  _checkLeftEdgeResize(mouseX, mouseY) {
+    // Import AverageWindowNode dynamically
+    return import('../models/AverageWindowNode.js').then(({ default: AverageWindowNode }) => {
+      // Check all nodes in reverse order (front to back)
+      for (let i = this.app.nodes.length - 1; i >= 0; i--) {
+        const node = this.app.nodes[i];
+        
+        // Only check AverageWindowNodes
+        if (!(node instanceof AverageWindowNode)) {
+          continue;
+        }
+        
+        // Check if mouse is in left edge area
+        const leftRect = node.getLeftResizeRect();
+        if (pointInRect(mouseX, mouseY, leftRect.x, leftRect.y, leftRect.w, leftRect.h)) {
+          return node;
+        }
+      }
+      
+      return null;
+    }).catch(error => {
+      console.error('Failed to import AverageWindowNode:', error);
+      return null;
+    });
+  }
+
+  /**
+   * Start left edge resize drag
+   * @param {object} node - AverageWindowNode to resize
+   * @param {number} mouseX - Mouse X coordinate
+   * @private
+   */
+  _startLeftEdgeResize(node, mouseX) {
+    this.leftEdgeResizeDrag = {
+      active: true,
+      node: node,
+      startX: mouseX,
+      startNodeX: node.x,
+      startNodeWidth: node.w
+    };
+    
+    // Set ew-resize cursor
+    if (typeof window.cursor === 'function') {
+      window.cursor('ew-resize');
+    }
+    
+    console.log(`Started left edge resize on node: ${node.label}`);
+  }
+
+  /**
+   * Handle left edge resize drag movement
+   * @param {number} mouseX - Mouse X coordinate
+   * @private
+   */
+  _handleLeftEdgeResize(mouseX) {
+    if (!this.leftEdgeResizeDrag.active || !this.leftEdgeResizeDrag.node) return;
+    
+    const node = this.leftEdgeResizeDrag.node;
+    const deltaX = mouseX - this.leftEdgeResizeDrag.startX;
+    
+    // Calculate new position and width
+    const newX = this.leftEdgeResizeDrag.startNodeX + deltaX;
+    const newWidth = this.leftEdgeResizeDrag.startNodeWidth - deltaX;
+    
+    // Apply minimum width constraint (1px from constants)
+    const AVERAGE_WINDOW_MIN_WIDTH = 1;
+    if (newWidth >= AVERAGE_WINDOW_MIN_WIDTH) {
+      // Update node position and width
+      node.x = newX;
+      node.setWidth(newWidth);
+    } else {
+      // Hit minimum width - constrain
+      const minX = this.leftEdgeResizeDrag.startNodeX + this.leftEdgeResizeDrag.startNodeWidth - AVERAGE_WINDOW_MIN_WIDTH;
+      node.x = minX;
+      node.setWidth(AVERAGE_WINDOW_MIN_WIDTH);
+    }
+  }
+
+  /**
+   * End left edge resize drag
+   * @private
+   */
+  _endLeftEdgeResize() {
+    if (this.leftEdgeResizeDrag.active) {
+      console.log(`Ended left edge resize - final width: ${this.leftEdgeResizeDrag.node.w}px`);
+    }
+    
+    this.leftEdgeResizeDrag = {
+      active: false,
+      node: null,
+      startX: 0,
+      startNodeX: 0,
+      startNodeWidth: 0
+    };
+    
+    // Reset cursor
+    if (typeof window.cursor === 'function') {
+      window.cursor('default');
+    }
+  }
+
+  /**
+   * Check if a port has any connections
+   * @param {object} port - Port to check
+   * @returns {boolean} True if port has connections
+   * @private
+   */
+  _isPortConnected(port) {
+    if (!this.app.connections || this.app.connections.length === 0) {
+      return false;
+    }
+    
+    // Check if any connection uses this port
+    for (const connection of this.app.connections) {
+      if (connection.hasPort(port)) {
+        return true;
+      }
+    }
+    
+    return false;
   }
 
   /**

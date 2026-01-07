@@ -13,13 +13,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="MIDI BitLab" />
+    <link rel="apple-touch-icon" href="./icons/icon.svg" />
     
     <!-- Theme colors for PWA -->
     <meta name="theme-color" content="#000000" />
     <meta name="msapplication-TileColor" content="#000000" />
     
-    <!-- p5.js 2.0.5+ (global mode) -->
-    <script src="https://cdn.jsdelivr.net/npm/p5@2.0.5/lib/p5.min.js"></script>
+    <!-- p5.js 2.0.5+ (global mode) - local copy for offline support -->
+    <script src="./lib/p5.min.js"></script>
     <style>
       html, body {
         margin: 0;
@@ -69,5 +70,32 @@
   <body>
     <!-- App entry (ES modules). Our modules will refer to p5 via window.p5 / window.createCanvas etc. -->
     <script type="module" src="./src/main.js"></script>
+    
+    <!-- Service Worker Registration for Offline Support -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then((registration) => {
+              console.log('[PWA] Service Worker registered successfully:', registration.scope);
+              
+              // Handle updates
+              registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                console.log('[PWA] New Service Worker found, installing...');
+                
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    console.log('[PWA] New version available! Refresh to update.');
+                  }
+                });
+              });
+            })
+            .catch((error) => {
+              console.error('[PWA] Service Worker registration failed:', error);
+            });
+        });
+      }
+    </script>
   </body>
 </html>

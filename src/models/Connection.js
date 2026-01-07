@@ -34,18 +34,36 @@ export default class Connection {
     // Basic validation - ports exist and are different
     if (!this.portA || !this.portB || this.portA === this.portB) return false;
     
-    // NEW: Role-based validation - only allow input ↔ output connections
+    // Role-based validation - only allow input ↔ output connections
     const roleA = this._getPortRole(this.portA);
     const roleB = this._getPortRole(this.portB);
     
-    // Only allow connections between input and output ports
-    const validConnection = (roleA === 'in' && roleB === 'out') || (roleA === 'out' && roleB === 'in');
+    const validRoles = (roleA === 'in' && roleB === 'out') || (roleA === 'out' && roleB === 'in');
     
-    if (!validConnection) {
+    if (!validRoles) {
       console.log(`Connection validation failed: ${roleA} port cannot connect to ${roleB} port`);
+      return false;
     }
     
-    return validConnection;
+    // Type validation - no mixing trigger and diamond ports
+    const typeA = this.portA.type;
+    const typeB = this.portB.type;
+    
+    const triggerTypes = ['input', 'output', 'up', 'down'];
+    const diamondTypes = ['ccInput', 'ccOutput'];
+    
+    const isATrigger = triggerTypes.includes(typeA);
+    const isBTrigger = triggerTypes.includes(typeB);
+    const isADiamond = diamondTypes.includes(typeA);
+    const isBDiamond = diamondTypes.includes(typeB);
+    
+    // Both must be same category (both triggers OR both diamonds)
+    if ((isATrigger && isBDiamond) || (isADiamond && isBTrigger)) {
+      console.log(`Connection blocked: Cannot mix trigger ports (${typeA}) and diamond ports (${typeB})`);
+      return false;
+    }
+    
+    return true;
   }
 
   /**
@@ -166,7 +184,11 @@ export default class Connection {
     const distance = Math.hypot(dx, dy);
     const baseOffset = Math.max(40, Math.min(distance * 0.4, 200));
     
-    // Detect port orientations based on positions relative to nodes
+    // Detect port orientations based on port types (more reliable than position)
+    const startIsInput = (this.portA.type === 'input' || this.portA.type === 'ccInput');
+    const endIsInput = (this.portB.type === 'input' || this.portB.type === 'ccInput');
+    
+    // Legacy: Also check position-based detection
     const startIsLeft = this._isPortOnLeft(this.portA, start);
     const startIsTop = this._isPortOnTop(this.portA, start);
     const endIsLeft = this._isPortOnLeft(this.portB, end);
@@ -174,8 +196,28 @@ export default class Connection {
     
     let cp1, cp2;
     
-    // Adaptive control points based on port orientations
-    if (startIsLeft && endIsLeft) {
+    // Special handling for diamond ports (ccInput/ccOutput)
+    if (startIsInput && !endIsInput) {
+      // Start is input (left), end is output (right) - curve from LEFT
+      cp1 = {
+        x: start.x - baseOffset * 0.8,
+        y: start.y + dy * 0.2
+      };
+      cp2 = {
+        x: end.x + baseOffset,
+        y: end.y - dy * 0.1
+      };
+    } else if (!startIsInput && endIsInput) {
+      // Start is output (right), end is input (left) - curve to LEFT
+      cp1 = {
+        x: start.x + baseOffset,
+        y: start.y + dy * 0.1
+      };
+      cp2 = {
+        x: end.x - baseOffset * 0.8,
+        y: end.y - dy * 0.2
+      };
+    } else if (startIsLeft && endIsLeft) {
       // Both ports on left - curve inward
       cp1 = {
         x: start.x - baseOffset * 0.8,
@@ -332,6 +374,60 @@ export default class Connection {
     const projY = y1 + t * dy;
     
     return Math.hypot(px - projX, py - projY);
+  }
+
+  /**
+   * Propagate continuous CC value through this connection (for diamond ports)
+   * Called every frame for ccOutput → ccInput connections
+   * @param {object} sourcePort - The ccOutput port
+   */
+  propagateContinuousValue(sourcePort) {
+    // Only for diamond port connections (ccOutput → ccInput)
+    if (sourcePort.type !== 'ccOutput') {
+      return;
+    }
+    
+    const targetPort = this.getOtherPort(sourcePort);
+    
+    if (!targetPort) {
+      console.warn('Cannot propagate value - target port not found');
+      return;
+    }
+    
+    // Validate target is ccInput
+    if (targetPort.type !== 'ccInput') {
+      console.warn('Cannot propagate value - target must be ccInput port');
+      return;
+    }
+    
+    // Get current CC value from source node (0-127)
+    const sourceNode = sourcePort.trigger; // Port.trigger points to the node for diamond ports
+    if (!sourceNode) {
+      console.warn('Cannot propagate value - source node not found');
+      return;
+    }
+    
+    if (typeof sourceNode.getCurrentCCValue !== 'function') {
+      console.warn('Cannot propagate value - source node missing getCurrentCCValue():', sourceNode.constructor.name);
+      return;
+    }
+    
+    const ccValue = sourceNode.getCurrentCCValue(); // Returns 0-127
+    console.log(`💎 Diamond propagation: ${sourceNode.label} → value=${ccValue}`);
+    
+    // Send to target node
+    const targetNode = targetPort.trigger;
+    if (!targetNode) {
+      console.warn('Cannot propagate value - target node not found');
+      return;
+    }
+    
+    if (typeof targetNode.receiveInputValue !== 'function') {
+      console.warn('Cannot propagate value - target node missing receiveInputValue():', targetNode.constructor.name);
+      return;
+    }
+    
+    targetNode.receiveInputValue(ccValue);
   }
 
   /**

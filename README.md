@@ -3,8 +3,9 @@
 
 # MIDI BitLab
 
-A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, group playback, and project persistence. Try it out here: [(https://somabits.github.io/Midi_BitLab/)
-](https://somabits.github.io/Midi_BitLab/)
+A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, group playback, and project persistence. It is designed to work with a toolkit called Habtic Bits Lab, a hands‑on prototyping kit for exploring vibration, heat, and shape‑change through the body. More information about the Habtic Bits Lab can be found here: [(https://hbits.forsslundsystems.com)
+](https://hbits.forsslundsystems.com)
+
 ## Getting Started
 
 ### Basic Workflow
@@ -48,6 +49,32 @@ A visual programming environment for MIDI Control Change messages with real-time
 - **Click blue Load button** → Opens file dialog to restore project
 - **All state preserved** → Nodes, triggers, connections, groups fully restored
 
+## Node Types
+
+### 1. Waveform Node (Recording Node)
+Created from MIDI CC recordings. Stores recorded waveform data for playback.
+- **Playback**: Click to play, red playhead sweeps left-to-right
+- **Triggers**: VTriggers (top edge) and HTriggers (right edge)
+- **Split**: Shift+click top edge to split node at position
+- **Duplicate**: Alt+drag to create copy
+- **Color picker**: Available in sidebar when node is selected
+
+### 2. Oscilloscope Node
+Real-time MIDI CC monitoring with scrolling visualization.
+- **Click label** → Opens source selector dropdown
+- **Right-to-left scrolling** → Shows live CC data (2 seconds visible)
+- **HTriggers only** → Click right edge to add threshold triggers
+- **Diamond ports** → Input/output for CC value streaming
+- **No VTriggers** → Not applicable for scrolling data
+
+### 3. Average Window Node
+Moving average smoother for CC values.
+- **Click label** → Opens source selector dropdown
+- **Drag left edge** → Resize averaging window width
+- **Diamond ports** → Input/output for CC value streaming
+- **No triggers** → Simplified averaging-only node
+- **Shows average** → Label displays current averaged CC value
+
 ## All Interactions
 
 ### Mouse Actions
@@ -71,6 +98,8 @@ A visual programming environment for MIDI Control Change messages with real-time
 | Click sidebar Save button | Download project as JSON |
 | Click sidebar Load button | Open file dialog to restore project |
 | Click project name edit icon | Edit project name inline |
+| Click oscilloscope/average label | Open CC source selector |
+| Drag average window left edge | Resize averaging width |
 
 ### Keyboard Shortcuts
 | Key | Action |
@@ -96,3 +125,6 @@ A visual programming environment for MIDI Control Change messages with real-time
 - **Trigger sequencing**: Connect output ports to input ports → Chain playback across nodes
 - **Group playback from trigger**: Connect cable to VTrigger input → Group plays from that position
 - **Delete persistence**: Right-click node → Overlay stays until you release inside node or on delete icon
+- **Real-time monitoring**: Use Oscilloscope nodes to monitor live CC values without recording
+- **Smooth CC output**: Connect Average Window node between source and destination to reduce jitter
+- **Chain diamond ports**: Connect CC output → CC input for signal processing pipelines

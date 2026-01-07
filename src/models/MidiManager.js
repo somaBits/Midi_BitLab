@@ -353,6 +353,66 @@ export default class MidiManager extends EventEmitter {
   }
 
   /**
+   * Send CC message to a specific output device by ID and/or raw name
+   * Falls back to all outputs if device not found
+   * @param {number} cc - Control change number (0-127)
+   * @param {number} value - CC value (0-127)
+   * @param {string} deviceId - Target input device ID (used to find matching output)
+   * @param {string} deviceRawName - Raw input device name (used if ID lookup fails)
+   * @param {number} channel - MIDI channel (0-15, optional)
+   */
+  sendCCToDevice(cc, value, deviceId, deviceRawName = null, channel = null) {
+    if (!this.ready || !this.outputs.length) {
+      return;
+    }
+
+    const targetChannel = (channel !== null) ? channel : this.channel;
+    const clampedChannel = Math.max(0, Math.min(15, targetChannel));
+    const clampedCC = Math.max(0, Math.min(127, cc));
+    const clampedValue = Math.max(0, Math.min(127, value));
+    
+    const message = [
+      0xB0 | clampedChannel,
+      clampedCC,
+      clampedValue
+    ];
+
+    let targetOutput = null;
+    
+    // Try to find output device by ID first (exact match)
+    if (deviceId) {
+      targetOutput = this.outputs.find(output => output.id === deviceId);
+    }
+    
+    // If not found by ID and we have a raw name, search by exact name match
+    if (!targetOutput && deviceRawName) {
+      targetOutput = this.outputs.find(output => output.name === deviceRawName);
+    }
+    
+    // If still not found, try to get the input device name from the ID and search outputs
+    if (!targetOutput && deviceId) {
+      const inputDevice = this.inputs.find(input => input.id === deviceId);
+      if (inputDevice && inputDevice.name) {
+        targetOutput = this.outputs.find(output => output.name === inputDevice.name);
+      }
+    }
+    
+    if (targetOutput) {
+      try {
+        targetOutput.send(message);
+        this.emit('message-sent', { message, outputs: 1, deviceId: targetOutput.id, deviceName: targetOutput.name });
+      } catch (error) {
+        console.error('MIDI send error to device:', error);
+        this.emit('send-error', { error: error.message, output: targetOutput });
+      }
+    } else {
+      // Fallback: send to all outputs if device not found
+      console.warn(`Target device ID '${deviceId}' / name '${deviceRawName}' not found, sending to all outputs`);
+      this._sendMessage(message);
+    }
+  }
+
+  /**
    * Send raw MIDI message to selected outputs
    * @param {number[]} message - MIDI message bytes
    * @private

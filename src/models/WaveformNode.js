@@ -26,6 +26,8 @@ export default class WaveformNode extends Node {
     // MIDI output configuration
     this.cc = this._parseCC(label);
     this.sourceDeviceName = '';
+    this.sourceDeviceId = null; // Device ID for targeted MIDI output routing
+    this.sourceDeviceRawName = null; // Raw device name for output matching (input/output have same name but different IDs)
     
     // Playback state
     this.playProgress = 0; // 0-1 normalized progress
@@ -243,6 +245,7 @@ export default class WaveformNode extends Node {
 
   /**
    * Send current MIDI CC value
+   * Routes to specific device if sourceDeviceId is set, otherwise sends to all outputs
    * @param {object} midiManager - MIDI manager instance
    */
   sendCurrentCC(midiManager) {
@@ -269,14 +272,20 @@ export default class WaveformNode extends Node {
     const ccValue = clamp(Math.round(currentValue * CC_MAX_VALUE), 0, CC_MAX_VALUE);
     
     if (ccValue !== this.lastCCSent) {
-      midiManager.sendCC(this.cc, ccValue);
+      // Route to specific device if we have source device info, otherwise send to all
+      if (this.sourceDeviceId || this.sourceDeviceRawName) {
+        midiManager.sendCCToDevice(this.cc, ccValue, this.sourceDeviceId, this.sourceDeviceRawName);
+      } else {
+        midiManager.sendCC(this.cc, ccValue);
+      }
       this.lastCCSent = ccValue;
       
       this.emit('cc-sent', {
         node: this,
         cc: this.cc,
         value: ccValue,
-        normalizedValue: currentValue
+        normalizedValue: currentValue,
+        targetDevice: this.sourceDeviceRawName || this.sourceDeviceId || 'all'
       });
     }
   }
@@ -418,6 +427,8 @@ export default class WaveformNode extends Node {
     
     cloned.cc = this.cc;
     cloned.sourceDeviceName = this.sourceDeviceName;
+    cloned.sourceDeviceId = this.sourceDeviceId;
+    cloned.sourceDeviceRawName = this.sourceDeviceRawName;
     
     return cloned;
   }
@@ -431,6 +442,8 @@ export default class WaveformNode extends Node {
       samples: this.samples,
       cc: this.cc,
       sourceDeviceName: this.sourceDeviceName,
+      sourceDeviceId: this.sourceDeviceId,
+      sourceDeviceRawName: this.sourceDeviceRawName,
       durationMs: this.durationMs,
       waveformHue: this.waveformHue,
       vTriggers: this.vTriggers.map(t => t.toJSON()),
@@ -453,6 +466,8 @@ export default class WaveformNode extends Node {
     node.id = data.id;
     node.cc = data.cc || 1;
     node.sourceDeviceName = data.sourceDeviceName || '';
+    node.sourceDeviceId = data.sourceDeviceId || null;
+    node.sourceDeviceRawName = data.sourceDeviceRawName || null;
     node.createdAt = data.createdAt || Date.now();
     
     // Restore waveform color (with fallback to default)
@@ -783,6 +798,8 @@ export default class WaveformNode extends Node {
     );
     leftNode.cc = this.cc;
     leftNode.sourceDeviceName = this.sourceDeviceName;
+    leftNode.sourceDeviceId = this.sourceDeviceId;
+    leftNode.sourceDeviceRawName = this.sourceDeviceRawName;
 
     // Create right node (positioned adjacent to left)
     const rightNode = new WaveformNode(
@@ -794,6 +811,8 @@ export default class WaveformNode extends Node {
     );
     rightNode.cc = this.cc;
     rightNode.sourceDeviceName = this.sourceDeviceName;
+    rightNode.sourceDeviceId = this.sourceDeviceId;
+    rightNode.sourceDeviceRawName = this.sourceDeviceRawName;
 
     // Create port mapping for connection remapping
     const portMap = new Map();

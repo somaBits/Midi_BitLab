@@ -4,7 +4,7 @@
  * Receives connection data and canvas context, outputs pixels
  */
 
-import { COLOR_CABLE, CABLE_DASH_PATTERN } from '../config/constants.js';
+import { COLOR_CABLE, COLOR_DIAMOND_CONNECTION, CABLE_DASH_PATTERN } from '../config/constants.js';
 
 export default class ConnectionRenderer {
   constructor(canvas) {
@@ -21,12 +21,17 @@ export default class ConnectionRenderer {
     
     const { start, cp1, cp2, end } = connection.getCurvePoints();
     
+    // Check if this connection involves a diamond port (ccOutput)
+    const isDiamondConnection = this._isDiamondConnection(connection);
+    
     // Set up dashed line using canvas context
     const ctx = this.canvas.drawingContext;
     ctx.setLineDash(CABLE_DASH_PATTERN);
     
     // Draw the bezier curve cable
-    this.canvas.stroke(...COLOR_CABLE);
+    // Use orange for diamond connections, white for others
+    const cableColor = isDiamondConnection ? COLOR_DIAMOND_CONNECTION : COLOR_CABLE;
+    this.canvas.stroke(...cableColor);
     this.canvas.strokeWeight(isHovered ? 2 : 1);
     this.canvas.noFill();
     
@@ -41,6 +46,23 @@ export default class ConnectionRenderer {
     ctx.setLineDash([]);
     
     // Note: Delete icon rendering is handled by AppController
+  }
+
+  /**
+   * Check if connection involves a diamond port (ccOutput or ccInput)
+   * @param {object} connection - Connection model
+   * @returns {boolean} True if either port is a diamond port
+   * @private
+   */
+  _isDiamondConnection(connection) {
+    // Check if either port is a ccOutput or ccInput type
+    const portAType = connection.portA && connection.portA.type;
+    const portBType = connection.portB && connection.portB.type;
+    
+    return portAType === 'ccOutput' || 
+           portBType === 'ccOutput' ||
+           portAType === 'ccInput' || 
+           portBType === 'ccInput';
   }
 
   /**

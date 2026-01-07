@@ -62,6 +62,12 @@ export default class Port {
       return this.trigger.getInputPortPosition();
     } else if (this.type === 'output') {
       return this.trigger.getOutputPortPosition();
+    } else if (this.type === 'ccInput') {
+      // ccInput type is for oscilloscope diamond input port (trigger IS the node)
+      return this.trigger.getCCInputPortPosition();
+    } else if (this.type === 'ccOutput') {
+      // ccOutput type is for oscilloscope diamond output port (trigger IS the node)
+      return this.trigger.getCCOutputPortPosition();
     }
     
     // Fallback

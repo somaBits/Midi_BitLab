@@ -395,6 +395,8 @@ class RecordingTrack {
       samples: samples,
       cc: this.cc,
       sourceDeviceName: this.deviceName,
+      sourceDeviceId: this.source?.id || null,  // Store device ID for targeted output routing
+      sourceDeviceRawName: this.source?.name || null,  // Store raw device name for output matching
       trackIndex: this.index
     };
   }

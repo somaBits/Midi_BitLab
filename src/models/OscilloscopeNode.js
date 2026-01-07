@@ -7,6 +7,7 @@
 
 import Node from './Node.js';
 import HTrigger from './HTrigger.js';
+import Port from './Port.js';
 import { 
   OSCILLOSCOPE_BUFFER_WIDTH, 
   OSCILLOSCOPE_DEFAULT_HEIGHT,
@@ -39,6 +40,17 @@ export default class OscilloscopeNode extends Node {
     
     // HTriggers only (no VTriggers for oscilloscope)
     this.hTriggers = [];
+    
+    // Diamond-shaped CC input port (left edge, vertically centered)
+    // When connected, this port receives CC values and overrides dropdown source
+    this.ccInputPort = new Port(this, 'ccInput', 'in');
+    
+    // Diamond-shaped CC output port (right edge, vertically centered)
+    // This port continuously outputs the current CC value to connected ports
+    this.ccOutputPort = new Port(this, 'ccOutput', 'out');
+    
+    // Track if input port is connected (overrides dropdown source)
+    this.inputConnected = false;
     
     // Live indicator state
     this.lastDataTime = 0;
@@ -96,8 +108,8 @@ export default class OscilloscopeNode extends Node {
     this.isReceivingData = (now - this.lastDataTime) < 500;
     
     // Time-based buffer advancement for smooth scrolling at PIXELS_PER_SECOND
-    // This ensures the graph scrolls at the same speed as WaveformNode playback
-    if (this.selectedSource) {
+    // Runs when: (1) selectedSource exists (MIDI), OR (2) receiving input data
+    if (this.selectedSource || this.isReceivingData) {
       this._advanceBuffer(deltaTime);
     }
     
@@ -225,6 +237,89 @@ export default class OscilloscopeNode extends Node {
       w: 0,
       h: 0
     };
+  }
+
+  /**
+   * Get diamond CC input port position
+   * Port is positioned on the left edge, vertically centered
+   * @returns {object} {x, y} position
+   */
+  getCCInputPortPosition() {
+    return {
+      x: this.x,
+      y: this.y + this.h / 2
+    };
+  }
+
+  /**
+   * Get diamond CC output port position
+   * Port is positioned on the right edge, vertically centered
+   * @returns {object} {x, y} position
+   */
+  getCCOutputPortPosition() {
+    return {
+      x: this.x + this.w,
+      y: this.y + this.h / 2
+    };
+  }
+
+  /**
+   * Check if input port is connected
+   * @returns {boolean} True if input port has connections
+   */
+  hasInputConnection() {
+    return this.inputConnected;
+  }
+
+  /**
+   * Set input connection state
+   * Called by connection system when connections are made/removed
+   * @param {boolean} connected - Whether input is connected
+   */
+  setInputConnectionState(connected) {
+    this.inputConnected = connected;
+    
+    if (connected) {
+      console.log('OscilloscopeNode: Input port connected - dropdown source overridden');
+    } else {
+      console.log('OscilloscopeNode: Input port disconnected - reverting to dropdown source');
+    }
+    
+    this.emit('input-connection-changed', {
+      node: this,
+      connected: connected
+    });
+  }
+
+  /**
+   * Receive CC value from connected input port
+   * This overrides the dropdown source while input is connected
+   * @param {number} ccValue - CC value (0-127)
+   */
+  receiveInputValue(ccValue) {
+    // Normalize CC value (0-127 → 0-1)
+    const normalizedValue = clamp(ccValue / CC_MAX_VALUE, 0, 1);
+    
+    // Only update lastReceivedValue - buffer writing happens in _advanceBuffer()
+    // This ensures smooth right-to-left scrolling at PIXELS_PER_SECOND (100px/sec)
+    this.lastReceivedValue = normalizedValue;
+    this.lastDataTime = performance.now();
+    
+    this.emit('input-value-received', {
+      node: this,
+      value: normalizedValue,
+      rawValue: ccValue
+    });
+  }
+
+  /**
+   * Get current CC value as integer (0-127)
+   * This value is continuously available for connected diamond output ports
+   * @returns {number} Current CC value (0-127)
+   */
+  getCurrentCCValue() {
+    // Convert normalized value (0-1) back to CC range (0-127)
+    return Math.round(this.lastReceivedValue * CC_MAX_VALUE);
   }
 
   /**
@@ -435,8 +530,13 @@ export default class OscilloscopeNode extends Node {
 
   /**
    * Get display header for this node
+   * Returns empty string when input port is connected (hides label)
    */
   getDisplayHeader() {
+    // Hide label when input port is connected
+    if (this.inputConnected) {
+      return '';
+    }
     return this.label;
   }
 
@@ -449,7 +549,10 @@ export default class OscilloscopeNode extends Node {
       type: 'oscilloscope',
       selectedSource: this.selectedSource,
       waveformHue: this.waveformHue,
-      hTriggers: this.hTriggers.map(t => t.toJSON())
+      hTriggers: this.hTriggers.map(t => t.toJSON()),
+      ccInputPort: this.ccInputPort.toJSON(), // Include input diamond port
+      ccOutputPort: this.ccOutputPort.toJSON(), // Include output diamond port
+      inputConnected: this.inputConnected
     };
   }
 
@@ -480,6 +583,9 @@ export default class OscilloscopeNode extends Node {
         HTrigger.fromJSON(triggerData, node)
       );
     }
+    
+    // ccOutputPort is automatically created in constructor
+    // No need to restore it from JSON
     
     return node;
   }

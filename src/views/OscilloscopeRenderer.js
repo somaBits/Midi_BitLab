@@ -27,7 +27,9 @@ import {
   PORT_HOVER_ARROW_COLOR,
   HTRIGGER_ARROW_CHAR,
   OSCILLOSCOPE_LIVE_INDICATOR_COLOR,
-  OSCILLOSCOPE_LIVE_INDICATOR_SIZE
+  OSCILLOSCOPE_LIVE_INDICATOR_SIZE,
+  OSCILLOSCOPE_DIAMOND_PORT_SIZE,
+  OSCILLOSCOPE_DIAMOND_TEXT_SIZE
 } from '../config/constants.js';
 
 export default class OscilloscopeRenderer {
@@ -59,6 +61,9 @@ export default class OscilloscopeRenderer {
     
     // Draw HTriggers (no VTriggers)
     this._drawHTriggers(oscilloscopeData);
+
+    // Draw diamond CC output port (right edge, vertically centered)
+    this._drawDiamondPort(oscilloscopeData);
 
     // Draw create area if hovered (right edge only)
     if (showCreateAreas && (isHovered || isDragging)) {
@@ -278,6 +283,55 @@ export default class OscilloscopeRenderer {
     if (trigger.downPortHovered) {
       this._drawPortArrow(renderData.downPort.x, renderData.downPort.y, HTRIGGER_ARROW_CHAR);
     }
+  }
+
+  /**
+   * Draw both diamond-shaped CC ports (input on left, output on right)
+   * Shows current CC value (0-127) inside each diamond
+   * @private
+   */
+  _drawDiamondPort(oscilloscopeData) {
+    const size = OSCILLOSCOPE_DIAMOND_PORT_SIZE;
+    const halfSize = size / 2;
+    const ccValue = oscilloscopeData.getCurrentCCValue();
+    
+    // Draw input port (left edge)
+    const inputPos = oscilloscopeData.getCCInputPortPosition();
+    this._drawSingleDiamond(inputPos.x, inputPos.y, halfSize, ccValue);
+    
+    // Draw output port (right edge)
+    const outputPos = oscilloscopeData.getCCOutputPortPosition();
+    this._drawSingleDiamond(outputPos.x, outputPos.y, halfSize, ccValue);
+  }
+
+  /**
+   * Draw a single diamond shape with CC value
+   * @param {number} x - Center X position
+   * @param {number} y - Center Y position
+   * @param {number} halfSize - Half of diamond size
+   * @param {number} ccValue - CC value to display (0-127)
+   * @private
+   */
+  _drawSingleDiamond(x, y, halfSize, ccValue) {
+    // Draw diamond using beginShape/vertex (4 vertices forming a rotated square)
+    this.canvas.stroke(...COLOR_TRIGGER_PORT); // White outline
+    this.canvas.strokeWeight(TRIGGER_PORT_WEIGHT);
+    this.canvas.fill(...COLOR_BACKGROUND); // Gray fill
+    
+    this.canvas.beginShape();
+    this.canvas.vertex(x, y - halfSize);  // Top vertex
+    this.canvas.vertex(x + halfSize, y);  // Right vertex
+    this.canvas.vertex(x, y + halfSize);  // Bottom vertex
+    this.canvas.vertex(x - halfSize, y);  // Left vertex
+    this.canvas.vertex(x, y - halfSize);  // Back to top (close shape)
+    this.canvas.endShape();
+    
+    // Draw CC value text inside diamond
+    this.canvas.noStroke();
+    this.canvas.fill(255); // White text
+    this.canvas.textAlign(this.canvas.CENTER, this.canvas.CENTER);
+    this.canvas.textSize(OSCILLOSCOPE_DIAMOND_TEXT_SIZE);
+    this.canvas.text(ccValue.toString(), x, y);
   }
 
   /**
