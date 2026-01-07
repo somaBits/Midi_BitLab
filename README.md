@@ -6,6 +6,8 @@
 A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, group playback, and project persistence. It is designed to work with a toolkit called Habtic Bits Lab, a hands‑on prototyping kit for exploring vibration, heat, and shape‑change through the body. More information about the Habtic Bits Lab can be found here: [(https://hbits.forsslundsystems.com)
 ](https://hbits.forsslundsystems.com)
 
+A visual programming environment for MIDI Control Change messages with real-time recording, trigger-based sequencing, group playback, and project persistence. It is designed to work with a toolkit called Habtic Bits Lab, a hands‑on prototyping kit for exploring vibration, heat, and shape‑change through the body. More information about the Habtic Bits Lab can be found here: [https://hbits.forsslundsystems.com](https://hbits.forsslundsystems.com)
+
 ## Getting Started
 
 ### Basic Workflow
@@ -110,15 +112,6 @@ Moving average smoother for CC values.
 | **Shift** | Enable grouping mode during drag |
 | **Alt** | Enable duplication mode during drag |
 
-### Visual Feedback
-- **Red playhead** → Individual node playback
-- **Blue playhead** → Group synchronized playback
-- **White dashed border** → Nodes are grouped
-- **Blue dashed border** → Group preview during Shift+drag
-- **Yellow cable** → Connection drag preview
-- **White cable** → Completed connection
-- **Cursor changes** → `ew-resize` (horizontal trigger), `ns-resize` (vertical trigger), `copy` (Alt+drag)
-
 ## Pro Tips
 
 - **Multi-track recording**: Send multiple CCs simultaneously → Creates grouped nodes automatically
@@ -128,3 +121,7 @@ Moving average smoother for CC values.
 - **Real-time monitoring**: Use Oscilloscope nodes to monitor live CC values without recording
 - **Smooth CC output**: Connect Average Window node between source and destination to reduce jitter
 - **Chain diamond ports**: Connect CC output → CC input for signal processing pipelines
+
+## Creative Commons
+Created by Charles Windlin
+CC BY-NC-SA 4.0
